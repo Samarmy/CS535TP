@@ -29,51 +29,46 @@ def get_followers(ft, cursor=-1):
 	response = requests.get(query_url, auth=my_auth, stream=True)
 	return response
 	
-def make_user_data(f, d={}):
-	d['screen_name'] = f['screen_name']
-	d['followers_count'] = f['followers_count']
-	d['friends_count'] = f['friends_count']
-	d['listed_count'] = f['listed_count']
-	d['created_days_ago'] = (datetime.utcnow().replace(tzinfo=pytz.utc) - datetime.strptime(f['created_at'], "%a %b %d %H:%M:%S %z %Y")).days
-	d['favourites_count'] = f['favourites_count']
-	d['time_zone'] = f['time_zone']
-	d['geo_enabled'] = f['geo_enabled']
-	d['verified'] = f['verified']
-	d['statuses_count'] = f['statuses_count']
-	d['contributors_enabled'] = f['contributors_enabled']
-	d['is_translator'] = f['is_translator']
-	d['is_translation_enabled'] = f['is_translation_enabled']
-	d['profile_use_background_image'] = f['profile_use_background_image']
-	d['has_extended_profile'] = f['has_extended_profile']
-	d['default_profile'] = f['default_profile']
-	d['default_profile_image'] = f['default_profile_image']
-	d['following'] = f['following']
-	d['live_following'] = f['live_following']
-	d['follow_request_sent'] = f['follow_request_sent']
-	d['notifications'] = f['notifications']
-	d['muting'] = f['muting']
-	d['blocking'] = f['blocking']
-	d['blocked_by'] = f['blocked_by']
-	d['translator_type'] = f['translator_type']
+def make_user_data(f, d=""):
+	d += str(f['screen_name']) + ","
+	d += str(f['followers_count']) + ","
+	d += str(f['friends_count']) + ","
+	d += str(f['listed_count']) + ","
+	d += str((datetime.utcnow().replace(tzinfo=pytz.utc) - datetime.strptime(f['created_at'], "%a %b %d %H:%M:%S %z %Y")).days) + ","
+	d += str(f['favourites_count']) + ","
+	d += str(f['time_zone']) + ","
+	d += str(f['geo_enabled']) + ","
+	d += str(f['verified']) + ","
+	d += str(f['statuses_count']) + ","
+	d += str(f['contributors_enabled']) + ","
+	d += str(f['is_translator']) + ","
+	d += str(f['profile_use_background_image']) + ","
+	d += str(f['default_profile']) + ","
+	d += str(f['default_profile_image']) + ","
+	d += str(f['following']) + ","
+	d += str(f['follow_request_sent']) + ","
+	d += str(f['notifications']) + ","
+	d += str(f['translator_type']) + ":"
 	return d
 	
-def get_all_followers_data(full_tweet, cursor=-1, d={}):
+def get_all_followers_data(full_tweet, cursor=-1, d="", u=""):
 	resp = get_followers(full_tweet)
 	count = 0
 	for line in resp.iter_lines():
 		followers = json.loads(line)
 		if "next_cursor" in followers:
-			nextCursor = followers["next_cursor"]
-			d = get_all_followers_data(full_tweet, cursor=nextCursor, d=d)
 			for f in followers["users"]:
 				d = make_user_data(f, d)
+				u += full_tweet["user"]["screen_name"] + "," + f["screen_name"] + ":"
 				count += 1
+			nextCursor = followers["next_cursor"]
+			d, u = get_all_followers_data(full_tweet, cursor=nextCursor, d=d, u=u)
 	print(count)
-	return d
+	return d, u
 	
 def send_tweets_to_spark(http_resp, tcp_connection):
 	for line in http_resp.iter_lines():
-		#try:
+		try:
 			full_tweet = json.loads(line)
 			for hashtag in full_tweet["entities"]["hashtags"]:
 				if any(t in hashtag["text"].lower() for t in tracking):
@@ -83,22 +78,26 @@ def send_tweets_to_spark(http_resp, tcp_connection):
 					print(full_tweet["entities"]["hashtags"])
 					print(full_tweet["user"]["screen_name"])
 					print ("------------------------------------------")
-					d = get_all_followers_data(full_tweet)
-					print(d)
-					#tcp_connection.send(tweet_text + '\n')
-		#except:
-			#e = sys.exc_info()[0]
-			#print("Error: %s" % e)
+					d, u = get_all_followers_data(full_tweet)
+					d = make_user_data(full_tweet["user"], d)
+					tcp_connection[0].send((u + '\n').encode('utf-8'))
+					tcp_connection[1].send((full_tweet["user"]["screen_name"] + "," + hashtag["text"].lower() + '\n').encode('utf-8'))
+					tcp_connection[2].send((d + '\n').encode('utf-8'))
+		except:
+			e = sys.exc_info()[0]
+			print("Error: %s" % e)
         
 if __name__ =="__main__":	
-	TCP_IP = "localhost"
-	TCP_PORT = 9009
-	conn = None
-	#s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	#s.bind((TCP_IP, TCP_PORT))
-	#s.listen(1)
-	print("Waiting for TCP connection...")
-	#conn, addr = s.accept()
+	TCP_IP = "tallahassee"
+	TCP_PORTS = [11711, 11712, 11713]
+	conn = [None, None, None]
+	for i, port in enumerate(TCP_PORTS): 
+		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		s.bind((TCP_IP, port))
+		s.listen(1)
+		print("Waiting for TCP connection...")
+		c, addr = s.accept()
+		conn[i] = c
 	print("Connected... Starting getting tweets.")
 	while True:
 		resp = get_tweets()
