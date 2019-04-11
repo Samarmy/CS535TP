@@ -34,7 +34,7 @@ def make_user_data(f, d=""):
 	d += str(f['followers_count']) + ","
 	d += str(f['friends_count']) + ","
 	d += str(f['listed_count']) + ","
-	d += str((datetime.utcnow().replace(tzinfo=pytz.utc) - datetime.strptime(f['created_at'], "%a %b %d %H:%M:%S %z %Y")).days) + ","
+	d += str(datetime.strptime(f['created_at'], "%a %b %d %H:%M:%S %z %Y")) + ","
 	d += str(f['favourites_count']) + ","
 	d += str(f['time_zone']) + ","
 	d += str(f['geo_enabled']) + ","
@@ -66,13 +66,25 @@ def get_all_followers_data(full_tweet, cursor=-1, d="", u=""):
 	print(count)
 	return d, u
 	
+def get_all_hashtag_data(full_tweet):
+	d = ","
+	d += str(full_tweet["quote_count"]) + ","
+	d += str(full_tweet["reply_count"]) + ","
+	d += str(full_tweet["retweet_count"]) + ","
+	d += str(full_tweet["favorite_count"]) + ","
+	d += str(full_tweet["favorited"]) + ","
+	d += str(full_tweet["retweeted"]) + ","
+	d += str(full_tweet["filter_level"]) + ","
+	return d
+	
 def send_tweets_to_spark(http_resp, tcp_connection):
 	for line in http_resp.iter_lines():
 		try:
 			full_tweet = json.loads(line)
 			for hashtag in full_tweet["entities"]["hashtags"]:
-				if any(t in hashtag["text"].lower() for t in tracking):
+				if any(t == hashtag["text"].lower() for t in tracking):
 					tweet_text = full_tweet['text']
+					print(full_tweet.keys())
 					print("Tweet Text: " + tweet_text)
 					print ("------------------------------------------")
 					print(full_tweet["entities"]["hashtags"])
@@ -80,8 +92,10 @@ def send_tweets_to_spark(http_resp, tcp_connection):
 					print ("------------------------------------------")
 					d, u = get_all_followers_data(full_tweet)
 					d = make_user_data(full_tweet["user"], d)
+					hd = get_all_hashtag_data(full_tweet)
+					print(full_tweet["user"]["screen_name"] + "," + hashtag["text"].lower() + hd + '\n')
 					tcp_connection[0].send((u + '\n').encode('utf-8'))
-					tcp_connection[1].send((full_tweet["user"]["screen_name"] + "," + hashtag["text"].lower() + '\n').encode('utf-8'))
+					tcp_connection[1].send((full_tweet["user"]["screen_name"] + "," + hashtag["text"].lower() + hd + '\n').encode('utf-8'))
 					tcp_connection[2].send((d + '\n').encode('utf-8'))
 		except:
 			e = sys.exc_info()[0]

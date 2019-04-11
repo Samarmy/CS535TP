@@ -12,7 +12,7 @@ object StreamingExample {
 		// userRelations consists of pairs of (screen_name, follower_screen_name)
         
         val userHashtagLines = ssc.socketTextStream("tallahassee", 11712)
-        val userHashtags = userHashtagLines.filter(_.nonEmpty).flatMap(_.split(":")).map(_.split(",")).filter(!_.isEmpty).map(x => (x(0),x(1)))
+        val userHashtags = userHashtagLines.filter(_.nonEmpty).flatMap(_.split(":")).map(_.split(",")).filter(!_.isEmpty).map(x => (x(0),x.drop(1)))
         // userHashtags consists of pairs of (screen_name, hashtag)
         
         val userDataLines = ssc.socketTextStream("tallahassee", 11713)
