@@ -34,7 +34,7 @@ def make_user_data(f, d=""):
 	d += str(f['followers_count']) + ","
 	d += str(f['friends_count']) + ","
 	d += str(f['listed_count']) + ","
-	d += str(datetime.strptime(f['created_at'], "%a %b %d %H:%M:%S %z %Y")) + ","
+	d += str(datetime.strptime(f['created_at'], "%a %b %d %H:%M:%S %z %Y").timestamp() * 1000) + ","
 	d += str(f['favourites_count']) + ","
 	d += str(f['time_zone']) + ","
 	d += str(f['geo_enabled']) + ","
@@ -84,7 +84,6 @@ def send_tweets_to_spark(http_resp, tcp_connection):
 			for hashtag in full_tweet["entities"]["hashtags"]:
 				if any(t == hashtag["text"].lower() for t in tracking):
 					tweet_text = full_tweet['text']
-					print(full_tweet.keys())
 					print("Tweet Text: " + tweet_text)
 					print ("------------------------------------------")
 					print(full_tweet["entities"]["hashtags"])
@@ -93,7 +92,6 @@ def send_tweets_to_spark(http_resp, tcp_connection):
 					d, u = get_all_followers_data(full_tweet)
 					d = make_user_data(full_tweet["user"], d)
 					hd = get_all_hashtag_data(full_tweet)
-					print(full_tweet["user"]["screen_name"] + "," + hashtag["text"].lower() + hd + '\n')
 					tcp_connection[0].send((u + '\n').encode('utf-8'))
 					tcp_connection[1].send((full_tweet["user"]["screen_name"] + "," + hashtag["text"].lower() + hd + '\n').encode('utf-8'))
 					tcp_connection[2].send((d + '\n').encode('utf-8'))
