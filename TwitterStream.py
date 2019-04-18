@@ -68,6 +68,7 @@ def get_all_followers_data(full_tweet, cursor=-1, d="", u=""):
 	
 def get_all_hashtag_data(full_tweet):
 	d = ","
+	d += str(full_tweet["timestamp_ms"]) + ","
 	d += str(full_tweet["quote_count"]) + ","
 	d += str(full_tweet["reply_count"]) + ","
 	d += str(full_tweet["retweet_count"]) + ","
