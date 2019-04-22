@@ -27,7 +27,9 @@ object StreamingExampleWithHadoop {
               userRelations.saveAsTextFile("hdfs:///tp/userRelations")
             }
           }else{
-            s.distinct().saveAsTextFile("hdfs:///tp/userRelations")
+            if(s.count() > 0){
+              s.distinct().saveAsTextFile("hdfs:///tp/userRelations")
+            }
           }
         })
 
@@ -41,7 +43,9 @@ object StreamingExampleWithHadoop {
               userHashtags.saveAsTextFile("hdfs:///tp/userHashtags")
             }
           }else{
-            s.distinct().mapValues(x => x.mkString(" ")).saveAsTextFile("hdfs:///tp/userHashtags")
+            if(s.count() > 0){
+              s.distinct().mapValues(x => x.mkString(" ")).saveAsTextFile("hdfs:///tp/userHashtags")
+            }
           }
         })
 
@@ -61,13 +65,15 @@ object StreamingExampleWithHadoop {
               userData.saveAsTextFile("hdfs:///tp/userData")
             }
           }else{
-            s.reduceByKey((v1, v2) => {
-              if(v1(3).toDouble.toLong > v2(3).toDouble.toLong){
-                v1
-              }else{
-                v2
-              }
-            }).mapValues(x => x.mkString(" ")).saveAsTextFile("hdfs:///tp/userData")
+            if(s.count() > 0){
+              s.reduceByKey((v1, v2) => {
+                if(v1(3).toDouble.toLong > v2(3).toDouble.toLong){
+                  v1
+                }else{
+                  v2
+                }
+              }).mapValues(x => x.mkString(" ")).saveAsTextFile("hdfs:///tp/userData")
+            }
           }
         })
 
