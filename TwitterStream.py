@@ -6,27 +6,40 @@ import json
 from datetime import datetime
 import pytz
 
-
+my_auths = []
+#Kevin
 ACCESS_TOKEN = '1103080779268026368-pcCTQueex8vi78QeHnhAPklpmGL54e'
 ACCESS_SECRET = 'NbrJAAXHRD3v3fSccubvGdQMqykwFOKo1ezQjC5GgkHxa'
 CONSUMER_KEY = '3MdU37FpmK5GIJIF7CwvmHwbu'
 CONSUMER_SECRET = 'PnV5RTi8uHy4QH1rFFlWG21ubOpDOWhncy8ovqD6T32axshrkD'
-my_auth = requests_oauthlib.OAuth1(CONSUMER_KEY, CONSUMER_SECRET,ACCESS_TOKEN, ACCESS_SECRET)
+my_auths.append(requests_oauthlib.OAuth1(CONSUMER_KEY, CONSUMER_SECRET,ACCESS_TOKEN, ACCESS_SECRET))
+#David
+ACCESS_TOKEN = '1044286223991267328-SyR5Bz0hvGPgsbba5Jhj9MuCpjdXar'
+ACCESS_SECRET = 'mWQa421ME1DB1T5a8Ka0b1oxs8D6d9R5h8cTSBUqePJRi'
+CONSUMER_KEY = '2d9PhgTD6YfmT8iQWheeaByd3'
+CONSUMER_SECRET = 'ZC6aamzKCx21ZODCUFrkFLNNQBlmptsL0x66OBtQgkRuMGX0dg'
+my_auths.append(requests_oauthlib.OAuth1(CONSUMER_KEY, CONSUMER_SECRET,ACCESS_TOKEN, ACCESS_SECRET))
+#Sam
+ACCESS_TOKEN = '1108447348210962432-pgAB79vs7jPoSubP6vxaZ8ErJWGW00'
+ACCESS_SECRET = '3D3PdlXpA9YV5YYRDDiHyFnuJuRrJAy8eNXHWV1Y3HtdO'
+CONSUMER_KEY = 'ZVrRMyXUstvQGjdeZSjMvrhq0'
+CONSUMER_SECRET = 'JDXQ4r5S0ZbqhBQvKUBnH6EMLw5lNtBo9CPCjdR1GhjU1ZSvLT'
+my_auths.append(requests_oauthlib.OAuth1(CONSUMER_KEY, CONSUMER_SECRET,ACCESS_TOKEN, ACCESS_SECRET))
 
 tracking = ["2020census","marvel","politics"]
 
-def get_tweets():
+def get_tweets(auth):
 	url = 'https://stream.twitter.com/1.1/statuses/filter.json'
 	query_data = [('language', 'en'),('track',",".join(tracking))]
 	query_url = url + '?' + '&'.join([str(t[0]) + '=' + str(t[1]) for t in query_data])
-	response = requests.get(query_url, auth=my_auth, stream=True)
+	response = requests.get(query_url, auth=auth, stream=True)
 	return response
 	
-def get_followers(ft, cursor=-1):
+def get_followers(auth, ft, cursor=-1):
 	url = 'https://api.twitter.com/1.1/followers/list.json'
 	query_data = [('screen_name', ft["user"]["screen_name"]), ("cursor", cursor)]
 	query_url = url + '?' + '&'.join([str(t[0]) + '=' + str(t[1]) for t in query_data])
-	response = requests.get(query_url, auth=my_auth, stream=True)
+	response = requests.get(query_url, auth=auth, stream=True)
 	return response
 	
 def make_user_data(f, d=""):
@@ -51,8 +64,15 @@ def make_user_data(f, d=""):
 	d += str(f['translator_type']) + ":"
 	return d
 	
-def get_all_followers_data(full_tweet, cursor=-1, d="", u=""):
-	resp = get_followers(full_tweet)
+def get_all_followers_data(auths, full_tweet, cursor=-1, d="", u=""):
+	i = 0
+	resp = get_followers(auths[i], full_tweet)
+	while resp.status_code == 429:
+		i += 1
+		if i == len(auths):
+			break
+		resp = get_followers(auths[i], full_tweet)
+		
 	count = 0
 	for line in resp.iter_lines():
 		followers = json.loads(line)
@@ -62,7 +82,7 @@ def get_all_followers_data(full_tweet, cursor=-1, d="", u=""):
 				u += full_tweet["user"]["screen_name"] + "," + f["screen_name"] + ":"
 				count += 1
 			nextCursor = followers["next_cursor"]
-			d, u = get_all_followers_data(full_tweet, cursor=nextCursor, d=d, u=u)
+			d, u = get_all_followers_data(auths, full_tweet, cursor=nextCursor, d=d, u=u)
 	print(count)
 	return d, u
 	
@@ -78,7 +98,7 @@ def get_all_hashtag_data(full_tweet):
 	d += str(full_tweet["filter_level"]) + ","
 	return d
 	
-def send_tweets_to_spark(http_resp, tcp_connection):
+def send_tweets_to_spark(auths, http_resp, tcp_connection):
 	for line in http_resp.iter_lines():
 		try:
 			full_tweet = json.loads(line)
@@ -90,7 +110,7 @@ def send_tweets_to_spark(http_resp, tcp_connection):
 					print(full_tweet["entities"]["hashtags"])
 					print(full_tweet["user"]["screen_name"])
 					print ("------------------------------------------")
-					d, u = get_all_followers_data(full_tweet)
+					d, u = get_all_followers_data(auths, full_tweet)
 					d = make_user_data(full_tweet["user"], d)
 					hd = get_all_hashtag_data(full_tweet)
 					tcp_connection[0].send((u + '\n').encode('utf-8'))
@@ -113,5 +133,5 @@ if __name__ =="__main__":
 		conn[i] = c
 	print("Connected... Starting getting tweets.")
 	while True:
-		resp = get_tweets()
-		send_tweets_to_spark(resp, conn)
+		resp = get_tweets(my_auths[0])
+		send_tweets_to_spark(my_auths, resp, conn)
