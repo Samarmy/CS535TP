@@ -43,6 +43,12 @@ object Graphx {
           var strAry = x.split(",")
           var props = strAry(1).substring(0, strAry(1).length - 1).split(" ")
           (strAry(0).substring(1) + " u", user(strAry(0).substring(1), props(0).toInt, props(1).toInt, props(2).toInt, props(3).split("\\.")(0).toLong, props(4).toInt, props(5), Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8).toInt, Try(props(9).toBoolean).getOrElse(false), Try(props(10).toBoolean).getOrElse(false), Try(props(11).toBoolean).getOrElse(false), Try(props(12).toBoolean).getOrElse(false), Try(props(13).toBoolean).getOrElse(false), Try(props(14).toBoolean).getOrElse(false), Try(props(15).toBoolean).getOrElse(false), Try(props(16).toBoolean).getOrElse(false), props(17)).asInstanceOf[Any])
+        }).reduceByKey((v1, v2) => {
+          if(v1.asInstanceOf[user].time > v2.asInstanceOf[user].time){
+            v1
+          }else{
+            v2
+          }
         }).cache()
         //(LeadingWPassion,50495 49713 282 1445416821000.0 15299 None False False 434339 False False True False False None None None none)
         val userRelations = spark.read.textFile("hdfs://austin:30121/test/userRelations/*").rdd.map(x => {
