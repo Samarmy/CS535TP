@@ -13,6 +13,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import java.util.concurrent.Executors;
 import java.net.InetSocketAddress
+import java.util.HashMap
 
 
 class VertexProperty()
@@ -23,7 +24,7 @@ case class JsonHolder(j: String){
 }
 
 object Graphx {
-    case class JsNode(name: String, hashtags: String)
+    case class JsNode(id: Long, name: String, hashtags: HashMap[String,Long])
     case class JsLink(source: Int, target: Int)
     case class JsGraph(nodes: Array[JsNode], links: Array[JsLink])
     var jh = JsonHolder("")
@@ -36,13 +37,13 @@ object Graphx {
         var userHashtags = spark.read.textFile("hdfs://austin:30121/test/userHashtags/*").rdd.map(x => {
           var strAry = x.split(",")
           var props = strAry(1).substring(0, strAry(1).length - 1).split(" ")
-          (strAry(0).substring(1) + " t", tweet(props(0), strAry(0).substring(1), props(1).toLong,  props(2).toInt, props(3).toInt, props(4).toInt, props(5).toInt, Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8)).asInstanceOf[Any])
+          (strAry(0).substring(1), tweet(props(0), strAry(0).substring(1), props(1).toLong,  props(2).toInt, props(3).toInt, props(4).toInt, props(5).toInt, Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8)).asInstanceOf[Any])
         }).cache()
         //(maxgin42,happybirthday 1555969426304 0 0 0 0 False False low)
         val userData = spark.read.textFile("hdfs://austin:30121/test/userData/*").rdd.map(x => {
           var strAry = x.split(",")
           var props = strAry(1).substring(0, strAry(1).length - 1).split(" ")
-          (strAry(0).substring(1) + " u", user(strAry(0).substring(1), props(0).toInt, props(1).toInt, props(2).toInt, props(3).split("\\.")(0).toLong, props(4).toInt, props(5), Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8).toInt, Try(props(9).toBoolean).getOrElse(false), Try(props(10).toBoolean).getOrElse(false), Try(props(11).toBoolean).getOrElse(false), Try(props(12).toBoolean).getOrElse(false), Try(props(13).toBoolean).getOrElse(false), Try(props(14).toBoolean).getOrElse(false), Try(props(15).toBoolean).getOrElse(false), Try(props(16).toBoolean).getOrElse(false), props(17), Map.empty[String, Array[Long]], Array[tweet](), Map.empty[String, Double]))
+          (strAry(0).substring(1), user(strAry(0).substring(1), props(0).toInt, props(1).toInt, props(2).toInt, props(3).split("\\.")(0).toLong, props(4).toInt, props(5), Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8).toInt, Try(props(9).toBoolean).getOrElse(false), Try(props(10).toBoolean).getOrElse(false), Try(props(11).toBoolean).getOrElse(false), Try(props(12).toBoolean).getOrElse(false), Try(props(13).toBoolean).getOrElse(false), Try(props(14).toBoolean).getOrElse(false), Try(props(15).toBoolean).getOrElse(false), Try(props(16).toBoolean).getOrElse(false), props(17), Map.empty[String, Array[Long]], Array[tweet](), Map.empty[String, Double]))
         }).reduceByKey((v1, v2) => {
           if(v1.asInstanceOf[user].time > v2.asInstanceOf[user].time){
             v1
@@ -80,9 +81,9 @@ object Graphx {
 
         val tweetEdges = tweetVertices.join(userVertices).map(x => Edge(x._2._2._1, x._2._1._1, "tweeted")).distinct().cache()
 
-        val vertices: RDD[(VertexId, Any)] = tweetVertices.map(x => x._2).union(userVertices.map(x => x._2))
+        val vertices: RDD[(VertexId, Any)] = userVertices.map(x => x._2)
 
-        val edges = userEdges ++ tweetEdges
+        val edges = userEdges //++ tweetEdges
 
         val blank = "None"
 
@@ -90,11 +91,10 @@ object Graphx {
 
         val graph = Graph(vertices, edges, defaultUser)
     
-        val vizVerts = graph.vertices.filter{
-                    case (id, u: user) => true
-                    case (id, t: tweet) => false
-                    }.map{
-                    case (id, u: user) => JsNode(u.screen_name, "0")
+        val vizVerts = graph.vertices.map{case (id, u: user) => 
+                    val hashtags = new HashMap[String,Long]
+                    u.labels.map{ case(k,v) => v.map(value => hashtags.put(k,value)) }
+                    JsNode(id, u.screen_name, hashtags)
                   }.distinct().collect()
       
         val vizEdges = graph.edges.map{
@@ -103,6 +103,9 @@ object Graphx {
                   
         var gson = new Gson()
         jh.json = gson.toJson(JsGraph(vizVerts, vizEdges))    
+        
+        println("HELLO THERE")
+        println(userHashtags.count(), userData.count())
       
         val server = HttpServer.create(new InetSocketAddress(11777), 0)
         server.createContext("/", new RootHandler(jh))
