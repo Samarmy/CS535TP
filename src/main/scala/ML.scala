@@ -119,7 +119,7 @@ object ML {
                   }
                 }
               }
-              // for(u <- show(broadcast.value.get(x._1))){
+              // for(u <- show(incomingHashMap.value.get(x._1))){
               //   for(h2 <- u._2.asInstanceOf[user].hashtags){
               //     if(h2.hashtag == hashtag_str && h2.time < (currentTimeMillis() - 86400000L) && h2.time > (currentTimeMillis() - (86400000L*(3L + 1L) ))){
               //         num_rel = num_rel + 1
@@ -145,7 +145,7 @@ object ML {
                 }
               }
             }
-            // for(u <- broadcast.value.get(x._1)){
+            // for(u <- incomingHashMap.value.get(x._1)){
             //   for(h2 <- u._2.asInstanceOf[user].hashtags){
             //     if(h2.hashtag == hashtag_str && h2.time > (currentTimeMillis() - (86400000L*(3L) ))){
             //         num_rel = num_rel + 1
