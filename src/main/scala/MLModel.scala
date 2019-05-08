@@ -77,7 +77,7 @@ object MLModel {
         val incomingHashMap = sc.broadcast(graph.collectNeighbors(EdgeDirection.Out).collectAsMap.toMap)
 
         // val hashtag_ary = Array("politics", "funny", "win", "happybirthday", "metoo", "photography", "marvel", "pets", "friends", "science", "birthday", "tech", "technology", "fashion", "trump", "impeachdonaldtrump", "news", "fakenews", "family", "food", "summer", "usa", "love", "men", "women")
-        val hashtag_ary = Array("politics")
+        val hashtag_ary = Array(args(0))
 
         def show(x: Option[Array[(org.apache.spark.graphx.VertexId, Any)]]) = x match {
               case Some(s) => s
@@ -129,7 +129,7 @@ object MLModel {
 
         val model = PipelineModel.load("/tp/pipelineModel")
         var predictions = model.transform(testing)
-        predictions.drop("features").drop("translator_type_index").drop("time_zone_index").drop("time_zone_index").write.format("csv").save("/tp/predictionPolitics")
+        predictions.drop("features").drop("translator_type_index").drop("time_zone_index").drop("time_zone_index").write.format("csv").save(args(1))
 
         spark.stop()
     }
