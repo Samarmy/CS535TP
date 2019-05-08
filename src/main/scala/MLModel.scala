@@ -129,7 +129,7 @@ object MLModel {
 
         val model = PipelineModel.load("/tp/pipelineModel")
         var predictions = model.transform(testing)
-        predictions.rdd.saveAsTextFile("/tp/predictionPolitics")
+        predictions.drop("features").drop("translator_type_index").drop("time_zone_index").drop("time_zone_index").write.format("csv").save("/tp/predictionPolitics")
 
         spark.stop()
     }
