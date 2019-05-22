@@ -26,7 +26,9 @@ CONSUMER_KEY = 'ZVrRMyXUstvQGjdeZSjMvrhq0'
 CONSUMER_SECRET = 'JDXQ4r5S0ZbqhBQvKUBnH6EMLw5lNtBo9CPCjdR1GhjU1ZSvLT'
 my_auths.append(requests_oauthlib.OAuth1(CONSUMER_KEY, CONSUMER_SECRET,ACCESS_TOKEN, ACCESS_SECRET))
 
-tracking = ["2020census","marvel","politics"]
+tracking = ["win", "politics", "tech", "science", "summer", "funny", "happybirthday", "metoo", "photography","marvel","pets", "friends",
+			"birthday", "technology", "fashion", "trump", "impeachdonaldtrump", "news", "fakenews", "family", "food",
+			"usa", "love", "men", "women"]
 
 def get_tweets(auth):
 	url = 'https://stream.twitter.com/1.1/statuses/filter.json'
@@ -96,12 +98,15 @@ def get_all_hashtag_data(full_tweet):
 	d += str(full_tweet["favorited"]) + ","
 	d += str(full_tweet["retweeted"]) + ","
 	d += str(full_tweet["filter_level"]) + ","
+	d += str(full_tweet['text']) + ","
 	return d
 	
 def send_tweets_to_spark(auths, http_resp, tcp_connection):
 	for line in http_resp.iter_lines():
 		try:
 			full_tweet = json.loads(line)
+			if "limit" in full_tweet:
+				continue
 			for hashtag in full_tweet["entities"]["hashtags"]:
 				if any(t == hashtag["text"].lower() for t in tracking):
 					tweet_text = full_tweet['text']
@@ -121,7 +126,7 @@ def send_tweets_to_spark(auths, http_resp, tcp_connection):
 			print("Error: %s" % e)
         
 if __name__ =="__main__":	
-	TCP_IP = "tallahassee"
+	TCP_IP = "funkwerks"
 	TCP_PORTS = [11711, 11712, 11713]
 	conn = [None, None, None]
 	for i, port in enumerate(TCP_PORTS): 
