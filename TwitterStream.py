@@ -26,9 +26,9 @@ CONSUMER_KEY = 'ZVrRMyXUstvQGjdeZSjMvrhq0'
 CONSUMER_SECRET = 'JDXQ4r5S0ZbqhBQvKUBnH6EMLw5lNtBo9CPCjdR1GhjU1ZSvLT'
 my_auths.append(requests_oauthlib.OAuth1(CONSUMER_KEY, CONSUMER_SECRET,ACCESS_TOKEN, ACCESS_SECRET))
 
-tracking = ["win", "politics", "tech", "science", "summer", "funny", "happybirthday", "metoo", "photography","marvel","pets", "friends",
-			"birthday", "technology", "fashion", "trump", "impeachdonaldtrump", "news", "fakenews", "family", "food",
-			"usa", "love", "men", "women"]
+with open('hashtags.txt') as f:
+    tracking = f.read().splitlines()
+print(tracking)
 
 def get_tweets(auth):
 	url = 'https://stream.twitter.com/1.1/statuses/filter.json'
