@@ -25,10 +25,16 @@ ACCESS_SECRET = '3D3PdlXpA9YV5YYRDDiHyFnuJuRrJAy8eNXHWV1Y3HtdO'
 CONSUMER_KEY = 'ZVrRMyXUstvQGjdeZSjMvrhq0'
 CONSUMER_SECRET = 'JDXQ4r5S0ZbqhBQvKUBnH6EMLw5lNtBo9CPCjdR1GhjU1ZSvLT'
 my_auths.append(requests_oauthlib.OAuth1(CONSUMER_KEY, CONSUMER_SECRET,ACCESS_TOKEN, ACCESS_SECRET))
+#Sam2
+ACCESS_TOKEN = '1138886152428146688-akWhdxr39ZE3jOqiDhDpiqNANbIPKh'
+ACCESS_SECRET = '2EuwY7KeQP6FoX9MZeEDQRQ8z4TkQWfFzidDGILajfopa'
+CONSUMER_KEY = 'A6BBTqLLxfEICxHL4vqGuaZvE'
+CONSUMER_SECRET = 'R8GvEWiLyi7HpHgHNVfoSB7JZ4ahz4s9EEHsimnbUEVKc4p65a'
+my_auths.append(requests_oauthlib.OAuth1(CONSUMER_KEY, CONSUMER_SECRET,ACCESS_TOKEN, ACCESS_SECRET))
 
-tracking = ["win", "politics", "tech", "science", "summer", "funny", "happybirthday", "metoo", "photography","marvel","pets", "friends",
-			"birthday", "technology", "fashion", "trump", "impeachdonaldtrump", "news", "fakenews", "family", "food",
-			"usa", "love", "men", "women"]
+with open('hashtags.txt') as f:
+    tracking = f.read().splitlines()
+print(tracking)
 
 def get_tweets(auth):
 	url = 'https://stream.twitter.com/1.1/statuses/filter.json'
@@ -36,14 +42,14 @@ def get_tweets(auth):
 	query_url = url + '?' + '&'.join([str(t[0]) + '=' + str(t[1]) for t in query_data])
 	response = requests.get(query_url, auth=auth, stream=True)
 	return response
-	
+
 def get_followers(auth, ft, cursor=-1):
 	url = 'https://api.twitter.com/1.1/followers/list.json'
 	query_data = [('screen_name', ft["user"]["screen_name"]), ("cursor", cursor)]
 	query_url = url + '?' + '&'.join([str(t[0]) + '=' + str(t[1]) for t in query_data])
 	response = requests.get(query_url, auth=auth, stream=True)
 	return response
-	
+
 def make_user_data(f, d=""):
 	d += str(f['screen_name']) + ","
 	d += str(f['followers_count']) + ","
@@ -51,21 +57,14 @@ def make_user_data(f, d=""):
 	d += str(f['listed_count']) + ","
 	d += str(datetime.strptime(f['created_at'], "%a %b %d %H:%M:%S %z %Y").timestamp() * 1000) + ","
 	d += str(f['favourites_count']) + ","
-	d += str(f['time_zone']) + ","
-	d += str(f['geo_enabled']) + ","
 	d += str(f['verified']) + ","
 	d += str(f['statuses_count']) + ","
 	d += str(f['contributors_enabled']) + ","
-	d += str(f['is_translator']) + ","
-	d += str(f['profile_use_background_image']) + ","
 	d += str(f['default_profile']) + ","
 	d += str(f['default_profile_image']) + ","
-	d += str(f['following']) + ","
-	d += str(f['follow_request_sent']) + ","
-	d += str(f['notifications']) + ","
-	d += str(f['translator_type']) + ":"
+	d += str(f['location']) + ":"
 	return d
-	
+
 def get_all_followers_data(auths, full_tweet, cursor=-1, d="", u=""):
 	i = 0
 	resp = get_followers(auths[i], full_tweet)
@@ -74,7 +73,7 @@ def get_all_followers_data(auths, full_tweet, cursor=-1, d="", u=""):
 		if i == len(auths):
 			break
 		resp = get_followers(auths[i], full_tweet)
-		
+
 	count = 0
 	for line in resp.iter_lines():
 		followers = json.loads(line)
@@ -87,7 +86,7 @@ def get_all_followers_data(auths, full_tweet, cursor=-1, d="", u=""):
 			d, u = get_all_followers_data(auths, full_tweet, cursor=nextCursor, d=d, u=u)
 	print(count)
 	return d, u
-	
+
 def get_all_hashtag_data(full_tweet):
 	d = ","
 	d += str(full_tweet["timestamp_ms"]) + ","
@@ -100,7 +99,7 @@ def get_all_hashtag_data(full_tweet):
 	d += str(full_tweet["filter_level"]) + ","
 	d += str(full_tweet['text']) + ","
 	return d
-	
+
 def send_tweets_to_spark(auths, http_resp, tcp_connection):
 	for line in http_resp.iter_lines():
 		try:
@@ -124,12 +123,12 @@ def send_tweets_to_spark(auths, http_resp, tcp_connection):
 		except:
 			e = sys.exc_info()[0]
 			print("Error: %s" % e)
-        
-if __name__ =="__main__":	
+
+if __name__ =="__main__":
 	TCP_IP = "funkwerks"
 	TCP_PORTS = [11711, 11712, 11713]
 	conn = [None, None, None]
-	for i, port in enumerate(TCP_PORTS): 
+	for i, port in enumerate(TCP_PORTS):
 		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		s.bind((TCP_IP, port))
 		s.listen(1)
