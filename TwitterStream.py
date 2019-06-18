@@ -61,8 +61,7 @@ def make_user_data(f, d=""):
 	d += str(f['statuses_count']) + ","
 	d += str(f['contributors_enabled']) + ","
 	d += str(f['default_profile']) + ","
-	d += str(f['default_profile_image']) + ","
-	d += str(f['location']) + ":"
+	d += str(f['default_profile_image']) + ":"
 	return d
 
 def get_all_followers_data(auths, full_tweet, cursor=-1, d="", u=""):
