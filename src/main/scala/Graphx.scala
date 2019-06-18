@@ -36,12 +36,12 @@ import org.apache.spark.ml.PipelineModel
 
 class VertexProperty()
 case class tweet(hashtag:String,screen_name:String,time:Long,quote_count:Int,reply_count:Int,retweet_count:Int,favorite_count:Int,favorited:Boolean,retweeted:Boolean,filter_level:String) extends VertexProperty
-case class user(screen_name:String,followers_count:Int,friends_count:Int,listed_count:Int,time:Long,favourites_count:Int,verified:Boolean,statuses_count:Int,contributors_enabled:Boolean,default_profile:Boolean,default_profile_image:Boolean,location:String,labels:Map[String, Array[Long]],hashtags:Array[tweet],prediction:Map[String, Double]) extends VertexProperty
+case class user(screen_name:String,followers_count:Int,friends_count:Int,listed_count:Int,time:Long,favourites_count:Int,verified:Boolean,statuses_count:Int,contributors_enabled:Boolean,default_profile:Boolean,default_profile_image:Boolean,labels:Map[String, Array[Long]],hashtags:Array[tweet],prediction:Map[String, Double]) extends VertexProperty
 case class JsonHolder(j: String){
     var json = j
 }
 // case class hash_data(screen_name:String,label:Int,followers_count:Int,friends_count:Int,listed_count:Int,time_user:Long,favourites_count:Int,time_zone:String,geo_enabled:Boolean,verified:Boolean,statuses_count:Int, contributors_enabled:Boolean, is_translator:Boolean,profile_use_background_image:Boolean,default_profile:Boolean, default_profile_image:Boolean, following:Boolean,follow_request_sent:Boolean, notifications:Boolean, translator_type:String, num_tweets:Int, num_user_relations:Int) extends Serializable
-  // case class test_data(screen_name:String,followers_count:Int,friends_count:Int,listed_count:Int,time_user:Long,favourites_count:Int,time_zone:String,geo_enabled:Boolean,verified:Boolean,statuses_count:Int, contributors_enabled:Boolean, is_translator:Boolean,profile_use_background_image:Boolean,default_profile:Boolean, default_profile_image:Boolean, following:Boolean,follow_request_sent:Boolean, notifications:Boolean, translator_type:String, num_tweets:Int, num_user_relations:Int) extends Serializable
+  case class test_data(screen_name:String,followers_count:Int,friends_count:Int,listed_count:Int,time_user:Long,favourites_count:Int,time_zone:String,geo_enabled:Boolean,verified:Boolean,statuses_count:Int, contributors_enabled:Boolean, is_translator:Boolean,profile_use_background_image:Boolean,default_profile:Boolean, default_profile_image:Boolean, following:Boolean,follow_request_sent:Boolean, notifications:Boolean, translator_type:String, num_tweets:Int, num_user_relations:Int) extends Serializable
 
 object Graphx {
     case class JsNode(id: Long, name: String, hashtags: HashMap[String,Array[Long]])
@@ -60,7 +60,6 @@ object Graphx {
         import spark.implicits._
         val sc = spark.sparkContext
         val ssc = new StreamingContext(sc, Seconds(60))
-        val fs = FileSystem.get(ssc.sparkContext.hadoopConfiguration)
 
         def mostRecentUser(user1: Array[String], user2: Array[String]): Array[String] = if(user1(3).toDouble.toLong > user2(3).toDouble.toLong) user1 else user2
         def rddFormat(rdd: ReceiverInputDStream[String]): DStream[Array[String]] = rdd.filter(_.nonEmpty).flatMap(_.split(":")).map(_.split(",")).filter(!_.isEmpty)
@@ -70,95 +69,62 @@ object Graphx {
         val userDataD = rddFormat(ssc.socketTextStream(args(0), args(3).toInt)).map(x => (x(0),x.drop(1)))
 
         userRelationsD.foreachRDD(s => {
-          if(fs.exists(new Path("/LG/userRelations"))){
-            var userRelations = ssc.sparkContext.textFile("hdfs://austin:30121/LG/userRelations/*").map(x => {
-              var strAry = x.split(",")
-              (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
-            }).union(s).distinct().repartition(10).cache()
-            if(userRelations.count() > 0){
-              userRelations.saveAsTextFile("hdfs://austin:30121/LG/userRelations")
-            }
-          }else{
-            if(s.count() > 0){
-              s.distinct().saveAsTextFile("hdfs://austin:30121/LG/userRelations")
-            }
-          }
+          ssc.sparkContext.textFile("hdfs://austin:30121/LG/userRelations/*").map(x => {
+            var strAry = x.split(",")
+            (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
+          }).union(s).distinct().repartition(10).saveAsTextFile("hdfs://austin:30121/LG/userRelations")
         })
 
         userHashtagsD.foreachRDD(s => {
-          if(fs.exists(new Path("/LG/userHashtags"))){
-            var userHashtags = ssc.sparkContext.textFile("hdfs://austin:30121/LG/userHashtags/*").map(x => {
-              var strAry = x.split(",")
-              (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
-            }).mapValues(x => x.split(" ")).union(s).distinct().mapValues(x => x.mkString(" ")).repartition(10).cache()
-            if(userHashtags.count() > 0){
-              userHashtags.saveAsTextFile("hdfs://austin:30121/LG/userHashtags")
-            }
-          }else{
-            if(s.count() > 0){
-              s.distinct().mapValues(x => x.mkString(" ")).saveAsTextFile("dfs://austin:30121/LG/userHashtags")
-            }
-          }
-        })
+        ssc.sparkContext.textFile("hdfs://austin:30121/LG/userHashtags/*").map(x => {
+          var strAry = x.split(",")
+          (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
+        }).mapValues(x => x.split(" ")).union(s).distinct().mapValues(x => x.mkString(" ")).repartition(10).saveAsTextFile("hdfs://austin:30121/LG/userHashtags")
+      })
 
         userDataD.foreachRDD(s => {
-          if(fs.exists(new Path("/LG/userData"))){
-            var userData = ssc.sparkContext.textFile("hdfs://austin:30121/LG/userData/*").map(x => {
-              var strAry = x.split(",")
-              (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
-            }).mapValues(x => x.split(" ")).union(s).reduceByKey(mostRecentUser).mapValues(x => x.mkString(" ")).repartition(10).cache()
-            if(userData.count() > 0){
-              userData.saveAsTextFile("hdfs://austin:30121/LG/userData")
-            }
-          }else{
-            if(s.count() > 0){
-              s.reduceByKey(mostRecentUser).mapValues(x => x.mkString(" ")).saveAsTextFile("hdfs://austin:30121/LG/userData")
-            }
-          }
+          ssc.sparkContext.textFile("hdfs://austin:30121/LG/userData/*").map(x => {
+            var strAry = x.split(",")
+            (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
+          }).mapValues(x => x.split(" ")).union(s).reduceByKey(mostRecentUser).mapValues(x => x.mkString(" ")).repartition(10).saveAsTextFile("hdfs://austin:30121/LG/userData")
         })
 
         var userHashtags = spark.read.textFile("hdfs://austin:30121/LG/userHashtags/*").rdd.map(x => {
           var strAry = x.split(",")
           var props = strAry(1).substring(0, strAry(1).length - 1).split(" ")
-          (strAry(0).substring(1), tweet(props(0), strAry(0).substring(1), props(1).toLong,  props(2).toInt, props(3).toInt, props(4).toInt, props(5).toInt, Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8)).asInstanceOf[Any])
+          (strAry(0).substring(1), tweet(props(0), strAry(0).substring(1), props(1).toLong,  props(2).toInt, props(3).toInt, props(4).toInt, props(5).toInt, Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8)))
         }).distinct().repartition(10).cache()
 
         val userData = spark.read.textFile("hdfs://austin:30121/LG/userData/*").rdd.map(x => {
           var strAry = x.split(",")
           var props = strAry(1).substring(0, strAry(1).length - 1).split(" ")
-          (strAry(0).substring(1), user(strAry(0).substring(1), props(0).toInt, props(1).toInt, props(2).toInt, props(3).split("\\.")(0).toLong, props(4).toInt, Try(props(5).toBoolean).getOrElse(false), props(6).toInt, Try(props(7).toBoolean).getOrElse(false), Try(props(8).toBoolean).getOrElse(false), Try(props(9).toBoolean).getOrElse(false), props(10), Map.empty[String, Array[Long]], Array[tweet](), Map.empty[String, Double]))
+          (strAry(0).substring(1), user(strAry(0).substring(1), props(0).toInt, props(1).toInt, props(2).toInt, props(3).split("\\.")(0).toLong, props(4).toInt, Try(props(5).toBoolean).getOrElse(false), props(6).toInt, Try(props(7).toBoolean).getOrElse(false), Try(props(8).toBoolean).getOrElse(false), Try(props(9).toBoolean).getOrElse(false), Map.empty[String, Array[Long]], Array[tweet](), Map.empty[String, Double]))
         }).reduceByKey((v1, v2) => {
-          if(v1.asInstanceOf[user].time > v2.asInstanceOf[user].time){
+          if(v1.time > v2.time){
             v1
           }else{
             v2
           }
         }).join(userHashtags).map(x => {
-          var tweet_data = x._2._2.asInstanceOf[tweet]
+          var tweet_data = x._2._2
           var str = tweet_data.hashtag
           var lng = tweet_data.time
           // user_data.hashtags :+ tweet_data
-          (x._1, x._2._1.asInstanceOf[user].copy(labels=Map(str -> Array(lng)), hashtags=Array(tweet_data)).asInstanceOf[Any])
-        }).reduceByKey((v1, v2) => v1.asInstanceOf[user].copy(labels=(v1.asInstanceOf[user].labels ++ v2.asInstanceOf[user].labels.map{ case (k,v) => k -> (v ++ v1.asInstanceOf[user].labels.getOrElse(k,Array[Long]()))}), hashtags = (v1.asInstanceOf[user].hashtags ++ v2.asInstanceOf[user].hashtags))).cache()
+          (x._1, x._2._1.copy(labels=Map(str -> Array(lng)), hashtags=Array(tweet_data)))
+        }).reduceByKey((v1, v2) => v1.copy(labels=(v1.labels ++ v2.labels.map{ case (k,v) => k -> (v ++ v1.labels.getOrElse(k,Array[Long]()))}), hashtags = (v1.hashtags ++ v2.hashtags))).cache()
 
         val userRelations = spark.read.textFile("hdfs://austin:30121/LG/userRelations/*").rdd.map(x => {
           var strAry = x.split(",")
           (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
         }).cache()
 
-        val indexedData = userData.zipWithUniqueId().cache()
+        val userVertices = userData.zipWithUniqueId().map(x => (x._1._1, (x._2, x._1._2))).cache()
 
-        val userVertices = indexedData.map(x => (x._1._1, (x._2, x._1._2))).cache()
+        val vertices: RDD[(VertexId, user)] = userVertices.map(x => x._2)
 
-        val userEdges = userRelations.join(userVertices).map(x => (x._2._1, x._2._2._1)).join(userVertices).map(x => Edge(x._2._1, x._2._2._1, "follows")).cache()
+        val edges = userRelations.join(userVertices).map(x => (x._2._1, x._2._2._1)).join(userVertices).map(x => Edge(x._2._1, x._2._2._1, "follows")).cache()
 
-        val vertices: RDD[(VertexId, Any)] = userVertices.map(x => x._2)
-
-        val edges = userEdges //++ tweetEdges
-
-        val blank = "None"
-
-        val defaultUser = (blank.asInstanceOf[Any])
+        val defaultUser = user("unknown",0,0,0,0L,0,false,0,false,false,false,Map[String, Array[Long]](),Array[tweet](),Map[String, Double]())
 
         val graph = Graph(vertices, edges, defaultUser)
 
