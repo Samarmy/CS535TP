@@ -96,7 +96,7 @@ def get_all_hashtag_data(full_tweet):
 	d += str(full_tweet["favorited"]) + ","
 	d += str(full_tweet["retweeted"]) + ","
 	d += str(full_tweet["filter_level"]) + ","
-	d += str(full_tweet['text']) + ","
+	d += str(full_tweet['text'].encode('utf-8', 'ignore')).replace(":", "U+003A").replace(",", "U+002C") + ","
 	return d
 
 def send_tweets_to_spark(auths, http_resp, tcp_connection):
