@@ -1,0 +1,39 @@
+<html>
+	<link rel="stylesheet" type="text/css" href="style_sheet.css">
+	<select name="hashtags" id="hashtagSelector">
+		<option value="win">#win</option>
+		<option value="politics">#politics</option>
+		<option value="tech">#tech</option>
+		<option value="science">#science</option>
+		<option value="summer">#summer</option>
+		<option value="funny">#funny</option>
+		<option value="happybirthday">#happybirthday</option>
+		<option value="metoo">#metoo</option>
+		<option value="photography">#photography</option>
+		<option value="marvel">#marvel</option>
+		<option value="pets">#pets</option>
+		<option value="friends">#friends</option>
+		<option value="birthday">#birthday</option>
+		<option value="technology">#technology</option>
+		<option value="fashion">#fashion</option>
+		<option value="trump">#trump</option>
+		<option value="impeachdonaldtrump">#impeachdonaldtrump</option>
+		<option value="news">#news</option>
+		<option value="fakenews">#fakenews</option>
+		<option value="family">#family</option>
+		<option value="food">#food</option>
+		<option value="usa">#usa</option>
+		<option value="love">#love</option>
+		<option value="men">#men</option>
+		<option value="women">#women</option>
+	</select>
+	<input type="date" id="dateSelector" min="2018-01-01" max="2018-12-31">
+	<input type="checkbox" value="prediction" id="predictionBox"> Show Predictions<br>
+	Number of Nodes: <input type="number" name="Number of Nodes" min="1" max="1000" value="1000" id="numNodes">
+	Current Super Node: <input type="number" name="Super Node" min="-1" max="1000" value="-1" id="superNode">
+	<button type="button" id="refreshButton">refresh</button>
+	<br>
+	<svg width="960" height="960"></svg>
+	<script src="https://d3js.org/d3.v4.min.js"></script>
+	<script src="ForceDirectedGraph.js"></script>
+</html>
