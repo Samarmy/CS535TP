@@ -29,10 +29,15 @@ object StreamingExampleWithHadoop {
         })
 
         userHashtagsD.foreachRDD(s => {
-          ssc.sparkContext.textFile("hdfs:///LG/userHashtags/*").map(x => {
+          ssc.sparkContext.textFile("hdfs://austin:30121/LG/userHashtags/*").map(x => {
             var strAry = x.split(",")
             (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
-          }).mapValues(x => x.split(" ")).union(s).distinct().mapValues(x => x.mkString(" ")).repartition(10).saveAsTextFile("hdfs:///LG/userHashtags")
+          }).mapValues(x => {
+            var strAry = x.split(" ")
+            var props = strAry.take(8)
+            var text = strAry.drop(8).mkString(" ")
+            (props :+ text)
+          }).union(s).distinct().mapValues(x => x.mkString(" ")).repartition(10).saveAsTextFile("hdfs://austin:30121/LG/userHashtags")
         })
 
         userDataD.foreachRDD(s => {

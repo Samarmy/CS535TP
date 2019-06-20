@@ -76,11 +76,16 @@ object Graphx {
         })
 
         userHashtagsD.foreachRDD(s => {
-        ssc.sparkContext.textFile("hdfs://austin:30121/LG/userHashtags/*").map(x => {
-          var strAry = x.split(",")
-          (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
-        }).mapValues(x => x.split(" ")).union(s).distinct().mapValues(x => x.mkString(" ")).repartition(10).saveAsTextFile("hdfs://austin:30121/LG/userHashtags")
-      })
+          ssc.sparkContext.textFile("hdfs://austin:30121/LG/userHashtags/*").map(x => {
+            var strAry = x.split(",")
+            (strAry(0).substring(1), strAry(1).substring(0, strAry(1).length - 1))
+          }).mapValues(x => {
+            var strAry = x.split(" ")
+            var props = strAry.take(8)
+            var text = strAry.drop(8).mkString(" ")
+            (props :+ text)
+          }).union(s).distinct().mapValues(x => x.mkString(" ")).repartition(10).saveAsTextFile("hdfs://austin:30121/LG/userHashtags")
+        })
 
         userDataD.foreachRDD(s => {
           ssc.sparkContext.textFile("hdfs://austin:30121/LG/userData/*").map(x => {
@@ -92,7 +97,7 @@ object Graphx {
         var userHashtags = spark.read.textFile("hdfs://austin:30121/LG/userHashtags/*").rdd.map(x => {
           var strAry = x.split(",")
           var props = strAry(1).substring(0, strAry(1).length - 1).split(" ")
-          (strAry(0).substring(1), tweet(props(0), strAry(0).substring(1), props(1).toLong,  props(2).toInt, props(3).toInt, props(4).toInt, props(5).toInt, Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8)))
+          (strAry(0).substring(1), tweet(props(0), strAry(0).substring(1), props(1).toLong,  props(2).toInt, props(3).toInt, props(4).toInt, props(5).toInt, Try(props(6).toBoolean).getOrElse(false), Try(props(7).toBoolean).getOrElse(false), props(8), props.drop(8).mkString(" ")))
         }).distinct().repartition(10).cache()
 
         val userData = spark.read.textFile("hdfs://austin:30121/LG/userData/*").rdd.map(x => {
