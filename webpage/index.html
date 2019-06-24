@@ -1,5 +1,6 @@
 <html>
 	<link rel="stylesheet" type="text/css" href="style_sheet.css">
+	<!--
 	<select name="hashtags" id="hashtagSelector">
 		<option value="win">#win</option>
 		<option value="politics">#politics</option>
@@ -29,9 +30,11 @@
 	</select>
 	<input type="date" id="dateSelector" min="2018-01-01" max="2018-12-31">
 	<input type="checkbox" value="prediction" id="predictionBox"> Show Predictions<br>
-	Number of Nodes: <input type="number" name="Number of Nodes" min="1" max="1000" value="1000" id="numNodes">
-	Current Super Node: <input type="number" name="Super Node" min="-1" max="1000" value="-1" id="superNode">
-	<button type="button" id="refreshButton">refresh</button>
+	Number of Nodes: <input type="number" name="Number of Nodes" min="1" max="10000" value="1000" id="numNodes"> 
+	Current Super Node: <input type="number" name="Super Node" min="-1" max="10000" value="-1" id="superNode"> -->
+	<button type="button" id="popButton">Up One Level</button>
+	<button type="button" id="refreshButton">Return to Top</button>
+	<h3 id="currSN">Current Super Node: None</h3>
 	<br>
 	<svg width="960" height="960"></svg>
 	<script src="https://d3js.org/d3.v4.min.js"></script>

@@ -8,7 +8,10 @@ var svg = d3.select("svg"),
     height = +svg.attr("height");
 
 var color = d3.scaleOrdinal(d3.schemeCategory10);
-
+var levelSize = 100
+var numLevels = 100
+var stack = []
+	
 fetchData()
 
 var graph = null
@@ -17,7 +20,7 @@ function updateSim(error, g, info) {
   if (error) throw error;
   var simulation = d3.forceSimulation()
     .force("link", d3.forceLink().id(function(d) { return d.id; }))
-    .force("charge", d3.forceManyBody().strength(-20))
+    .force("charge", d3.forceManyBody().strength(-150))
     .force("x", d3.forceX(width / 2))
     .force("y", d3.forceY(height / 2));
     
@@ -39,7 +42,8 @@ function updateSim(error, g, info) {
     .enter().append("g")
     .on("click", function(d) { viewSuperNode(d) })
  
-  var h = document.getElementById("hashtagSelector").value
+  //var h = document.getElementById("hashtagSelector").value
+  var h = null
   var circles = node.append("circle")
       .attr("r", 5)
       //.attr("fill", function(d) { return colorNode(d,h,graph) })
@@ -144,13 +148,17 @@ function makeTooltip(d, h, g) {
 }
 
 function viewSuperNode(d){
-	var sn = document.getElementById("superNode")
-	sn.value = d.id
+	stack.push(d.id)
 	fetchData()
+	currSN.innerText = "Current Super Node: "+d.id
 }
 
 function makeTooltipReduced(d, h, g, i) {
-	return "Super node "+d.id+" contains "+i[d.id].numNodes+" interior nodes and "+i[d.id].numEdges+" interior edges"
+	if (i[d.id].numNodes == 1){
+		return "Node "+d.id
+	} else {
+		return "Super node "+d.id+" contains "+i[d.id].numNodes+" interior nodes and "+i[d.id].numEdges+" interior edges"
+	}
 }
 
 function preprocessData(data){
@@ -185,12 +193,14 @@ function preprocessData(data){
 
 	var links = []
 	var existingLinks = new Set()
+	var linkIxs = {}
 	for (d in data.links){
 		if (!(data.links[d].source in realIDMap) || !(data.links[d].target in realIDMap))
 			continue
 		var link = {}
 		link.source = realIDMap[data.links[d].source]
 		link.target = realIDMap[data.links[d].target]
+		link.value = 1
 		if(link.source === -1 || link.target === -1){
 			nodeInfo[link.source].numEdges += 1
 			continue
@@ -202,6 +212,9 @@ function preprocessData(data){
 			if (!existingLinks.has(linkID)){
 				links.push(link)
 				existingLinks.add(linkID)
+				linkIxs[linkID] = links.length-1
+			} else {
+				links[linkIxs[linkID]].value += 1
 			}
 		}
 	}
@@ -218,7 +231,7 @@ function fetchData() {
     }).bind(this));
     _xhr.open("POST", "http://salt-lake-city.cs.colostate.edu:11777/synopsis", true);
 	_xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-    _xhr.send(document.getElementById("numNodes").value+","+document.getElementById("superNode").value);	
+    _xhr.send(stack.join(","));	
 }
 
 function updateGraph() {
@@ -237,6 +250,18 @@ function updateGraph() {
       .text(function(d) { return makeTooltip(d,h,graph) })
 }
 
+document.getElementById("refreshButton").onclick = function() {
+	stack = []
+	fetchData()
+	currSN.innerText = "Current Super Node: None"
+}
+
+document.getElementById("popButton").onclick = function() {
+	stack.pop()
+	fetchData()
+	currSN.innerText = "Current Super Node: "+stack[stack.length-1]
+}
+/*
 document.getElementById("hashtagSelector").onchange = function() {
 	updateGraph()
 }
@@ -254,3 +279,4 @@ document.getElementById('dateSelector').onchange = function(){
 document.getElementById('predictionBox').onchange = function(){
 	updateGraph()
 }
+*/

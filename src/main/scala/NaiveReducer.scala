@@ -14,85 +14,90 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress
 import scala.io.Source
 import java.util.Random
-
-//class VertexProperty()
-case class clusterProperty(l: Array[Long], ix: Int) extends VertexProperty
-    
-case class GraphHolder(g: Graph[clusterProperty,Int]){
-    var graph = g
-}
-
-case class JsNode(id: Long, realID: Long)
-case class JsLink(source: Int, target: Int)
-case class JsGraph(nodes: Array[JsNode], links: Array[JsLink])
-    
+        
 object NaiveReducer {
     val rand = new Random();
+    var numNodes = 10000
+    var levelSize = 100
+    val numLevels = 10
     
-    def merge(a: clusterProperty, b1: clusterProperty) : clusterProperty = {
-        val b = clusterProperty(b1.l.toList.filter(!a.l.contains(_)).toArray, b1.ix)
-        val answer = clusterProperty(Array.fill(a.l.length+b.l.length){0L}, -1)
-        var i = 0
-        var j = 0
-        var k = 0;
-        while (i < a.l.length && j < b.l.length) {
-            //if (a.l(i) < b.l(j)){
-            if (rand.nextFloat() < 0.5){
-                answer.l(k) = a.l(i);
-                i += 1;
-                k += 1;
-            }else{
-                answer.l(k) = b.l(j);
-                j += 1;
-                k += 1;
+    case class JsNode(id: Long, realID: Long)
+    case class JsLink(source: Int, target: Int)
+    case class JsGraph(nodes: Array[JsNode], links: Array[JsLink])
+        
+    def merge(a: Array[Long], b: Array[Long]) : Array[Long] = {
+        var retArray = Array.fill[Long](a.length)(-1)
+        for (i <- a.indices){
+            if (a(i) != -1 && b(i) != -1){
+                if (rand.nextFloat() < 0.5){
+                    retArray(i) = a(i)
+                } else {
+                    retArray(i) = b(i)
+                }
+            } else if (a(i) != -1 && b(i) == -1){
+                retArray(i) = a(i)
+            } else if (a(i) == -1 && b(i) != -1){
+                retArray(i) = b(i)
             }
         }
-        while (i < a.l.length){
-            answer.l(k) = a.l(i);
-            i += 1;
-            k += 1;
-        }
-        while (j < b.l.length) {
-            answer.l(k) = b.l(j);
-            j += 1;
-            k += 1;
-        }
-        return answer
+        return retArray
     }
-    
-    def append(a: clusterProperty, b1: clusterProperty) : clusterProperty = {
-        val b = clusterProperty(b1.l.toList.filter(!a.l.contains(_)).toArray, b1.ix)
-        var answer = clusterProperty(a.l ++ b.l, a.l.length-1)
-        if(b.l.length == 0 && b1.ix != -2){
-            answer = clusterProperty(answer.l, answer.l.length)
+        
+    def update(a: Array[Long], b: Array[Long]) : Array[Long] = {
+        var retArray = Array.fill[Long](a.length)(-1)
+        for (i <- retArray.indices){
+            if (a(i) != -1){
+                retArray(i) = a(i)
+            } else {
+                retArray(i) = b(i)
+            }
         }
-        return answer
+        return retArray
     }
-    
-
+        
     def main(args: Array[String]) {
         val spark = SparkSession.builder.appName("NaiveReducer").getOrCreate()
         import spark.implicits._
         val sc = spark.sparkContext
         
-        val graph: Graph[Long, Int] = graphx.util.GraphGenerators.logNormalGraph(sc, 10000, 0, 0.4, 0.5)
+        val graph: Graph[Long, Int] = graphx.util.GraphGenerators.logNormalGraph(sc, numNodes, 0, 0.4, 1.0)
         
-        val initialGraph = graph.mapVertices((id, prop) => {
-            clusterProperty(Array(id),0)
+        val initialGraph = graph.mapVertices((id, _) => {
+            var retArray = Array.fill[Long](numLevels)(-1)
+            var a = 0
+            var ix = 0
+            while( a < numLevels*levelSize){
+                a += levelSize
+                if (id < a){
+                    retArray(ix) = id
+                    a = numLevels*levelSize+1
+                }
+                ix += 1
+            }
+            (retArray)
         })
-          
-        val clusteredGraph = initialGraph.pregel(clusterProperty(Array[Long](),-2), 6)(
-        (id, cp, newCp) => append(cp, newCp), // Vertex Program
-        triplet => {  // Send Message
-            if (triplet.srcAttr.ix != triplet.srcAttr.l.length){
-                Iterator((triplet.dstId, clusterProperty(triplet.srcAttr.l.slice(triplet.srcAttr.ix, triplet.srcAttr.l.length),-1)))
-            } else {
-                Iterator.empty
-        }
-        },
-        (a, b) => merge(a, b) // Merge Message
+        //initialGraph.vertices.collect.foreach(x => println(x._1 +" "+x._2.mkString(",")+"\n"))
+
+        
+        val clusteredGraph = initialGraph.pregel(Array.fill[Long](numLevels)(-1))(
+            (id, cp, newCp) => update(cp, newCp), // Vertex Program
+            triplet => {  // Send Message
+                var msg = false
+                for (i <- triplet.srcAttr.indices){
+                    if (triplet.dstAttr(i) == -1 && triplet.srcAttr(i) != -1){
+                        msg = true
+                    }
+                }
+                if (msg){
+                    Iterator((triplet.dstId, triplet.srcAttr))
+                } else {
+                    Iterator.empty
+                }
+            },
+            (a, b) => merge(a, b) // Merge Message
         ).cache()
-        //clusteredGraph.vertices.collect.foreach(x => println(x._1 +" "+x._2.ix+" "+x._2.l.mkString(",")+"\n"))
+        //clusteredGraph.vertices.collect.foreach(x => println(x._1 +" "+x._2.mkString(",")+"\n"))
+        
         
         var gh = GraphHolder(clusteredGraph)
         val server = HttpServer.create(new InetSocketAddress(11777), 0)
@@ -102,62 +107,75 @@ object NaiveReducer {
         
         //spark.stop()
     }
-}
-
-class ResponseHandler(gh: GraphHolder) extends HttpHandler {
-
-  def handle(t: HttpExchange) {
-    val body = Source.fromInputStream(t.getRequestBody).mkString
-    displayPayload(body)
-    sendResponse(t, body)
-  }
-
-  private def displayPayload(body: String): Unit ={
-    println()
-    println("******************** REQUEST START ********************")
-    println()
-    println(body)
-    println()
-    println("********************* REQUEST END *********************")
-    println()
-  }
-  
-  private def makeResponse(body: String): String ={
-    var gson = new Gson()
-    val request = body.split(",").map(_.toInt)
-    val vizVerts = gh.graph.vertices.flatMap{case (id, p: clusterProperty) =>
-        if (request(1) == -1){
-            Array[JsNode](JsNode(p.l.find(_ < request(0)).getOrElse(-1), id))
-        } else {
-            val startingIx : Long = p.l.find(_ < request(0).toInt).getOrElse(-1)
-            if (startingIx == 0){
-                 Array[JsNode](JsNode(request(1), id))
-            } else if (startingIx != -1 && startingIx == request(1)){
-                //Array[JsNode](JsNode(p.l.slice(startingIx.toInt,p.l.length).find(_ < request(0).toInt).getOrElse(-1), id))
-                Array[JsNode](JsNode(id, id))
-            } else {
-                Array[JsNode]()
-            }
+    
+    class ResponseHandler(gh: GraphHolder) extends HttpHandler {
+        
+        def handle(t: HttpExchange) {
+            val body = Source.fromInputStream(t.getRequestBody).mkString
+            displayPayload(body)
+            sendResponse(t, body)
         }
-    }.distinct().collect()
 
-    val vizEdges = gh.graph.edges.map{
-        edge => JsLink(edge.srcId.toInt, edge.dstId.toInt)
-    }.collect()
-    return gson.toJson(JsGraph(vizVerts, vizEdges))
-  }
+        private def displayPayload(body: String): Unit ={
+            println()
+            println("******************** REQUEST START ********************")
+            println()
+            println(body)
+            println()
+            println("********************* REQUEST END *********************")
+            println()
+        }
+        
+        private def makeResponse(body: String): String ={
+            var gson = new Gson()
+            val request = body.split(",").filter(_!="").map(_.toInt)
 
-  private def sendResponse(t: HttpExchange, body: String) {
-    //FileUtils.writeStringToFile(new File("/s/chopin/a/grad/kevincb/test.json"), json)
-    t.getResponseHeaders().add("Content-Type", "application/json");
-    //t.getResponseHeaders().add("Content-Encoding", "gzip");
-    t.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-    t.getResponseHeaders().add("Access-Control-Allow-Methods", "POST");
-    t.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type,Content-Encoding");
-    val response = makeResponse(body)
-    t.sendResponseHeaders(200, response.length())
-    val os = t.getResponseBody
-    os.write(response.getBytes)
-    os.close()
-  }
+            val vizVerts = gh.graph.vertices.flatMap{case (id, prop) =>
+                if (request.length == 0){
+                    Array[JsNode](JsNode(prop(0), id))
+                } else {
+                    if(prop.take(request.length).sameElements(request)){
+                        if (request.length == numLevels){
+                            Array[JsNode](JsNode(id, id))
+                        } else {
+                            Array[JsNode](JsNode(prop(request.length), id))
+                        }
+                    } else {
+                        Array[JsNode]()
+                    }
+                }
+            }.distinct().collect()
+
+            val vizEdges = gh.graph.edges.map{
+                edge => JsLink(edge.srcId.toInt, edge.dstId.toInt)
+            }.collect()
+
+            return gson.toJson(JsGraph(vizVerts, vizEdges))
+        }
+
+        private def sendResponse(t: HttpExchange, body: String) {
+            //FileUtils.writeStringToFile(new File("/s/chopin/a/grad/kevincb/test.json"), json)
+            t.getResponseHeaders().add("Content-Type", "application/json");
+            //t.getResponseHeaders().add("Content-Encoding", "gzip");
+            t.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+            t.getResponseHeaders().add("Access-Control-Allow-Methods", "POST");
+            t.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type,Content-Encoding");
+            var response = ""
+            try {
+                response = makeResponse(body)
+            } catch {
+                case e: Throwable => e.printStackTrace()
+            }
+            t.sendResponseHeaders(200, response.length())
+            val os = t.getResponseBody
+            os.write(response.getBytes)
+            os.close()
+        }
+    }
+    
+    case class GraphHolder(g: Graph[Array[Long],Int]){
+        var graph = g
+    }
 }
+
+
