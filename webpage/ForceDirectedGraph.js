@@ -8,9 +8,10 @@ var svg = d3.select("svg"),
     height = +svg.attr("height");
 
 var color = d3.scaleOrdinal(d3.schemeCategory10);
-var levelSize = 100
+var levelSize = 500
 var numLevels = 100
 var stack = []
+var radius = 6
 	
 fetchData()
 
@@ -18,16 +19,18 @@ var graph = null
 
 function updateSim(error, g, info) {
   if (error) throw error;
+  d3.select("svg").selectAll("*").remove()
   var simulation = d3.forceSimulation()
     .force("link", d3.forceLink().id(function(d) { return d.id; }))
     .force("charge", d3.forceManyBody().strength(-150))
     .force("x", d3.forceX(width / 2))
-    .force("y", d3.forceY(height / 2));
+    .force("y", d3.forceY(height*4/6 / 2));
     
   console.log(g)
   graph = g
   d3.selectAll(".links").remove()
   d3.selectAll(".nodes").remove()
+  
   var link = svg.append("g")
       .attr("class", "links")
     .selectAll("line")
@@ -45,7 +48,7 @@ function updateSim(error, g, info) {
   //var h = document.getElementById("hashtagSelector").value
   var h = null
   var circles = node.append("circle")
-      .attr("r", 5)
+      .attr("r", 7)
       //.attr("fill", function(d) { return colorNode(d,h,graph) })
       .call(d3.drag()
           .on("start", dragstarted)
@@ -59,10 +62,16 @@ function updateSim(error, g, info) {
       .nodes(graph.nodes)
       .on("tick", ticked);
 
+  chart(g, circles)
+
   simulation.force("link")
       .links(graph.links);
 
   function ticked() {
+	node
+		.attr("cx", function(d) { return d.x = Math.max(radius, Math.min(width - radius, d.x)); })
+        .attr("cy", function(d) { return d.y = Math.max(radius, Math.min(height*4/6 - radius, d.y)); });
+        
     link
         .attr("x1", function(d) { return d.source.x; })
         .attr("y1", function(d) { return d.source.y; })
@@ -125,6 +134,14 @@ function colorNode(d, h, g) {
 	} else { return }
 }
 
+function colorByOutDegree(d, nodes, color){
+	if (nodes.has(d.id)){
+		return d3.rgb(color)
+	} else {
+		return d3.rgb("black")
+	}
+}
+
 function makeTooltip(d, h, g) {
 	var predictions = document.getElementById('predictionBox').checked
 	if (predictions){
@@ -167,12 +184,6 @@ function preprocessData(data){
 	var removalNodes = []
 	var nodeInfo = {}
 	for (d in data.nodes){
-		/*
-		if (data.nodes[d].id === -1){
-			removalNodes.push(d)
-			continue
-		}
-		*/
 		realIDMap[data.nodes[d].realID] = data.nodes[d].id
 		
 		if (data.nodes[d].id in nodeInfo){
@@ -248,6 +259,120 @@ function updateGraph() {
           .on("end", dragended));
 	node.selectAll("title")
       .text(function(d) { return makeTooltip(d,h,graph) })
+}
+
+function chart(data, circles) {
+	var out_counts = {}
+	for(l in data.links){
+		if (data.links[l].source in out_counts){
+			out_counts[data.links[l].source] += 1
+		} else {
+			out_counts[data.links[l].source] = 1
+		}
+		if (data.links[l].target in out_counts){
+			out_counts[data.links[l].target] += 1
+		} else {
+			out_counts[data.links[l].target] = 1
+		}
+	}
+	var out_degrees = {}
+	var degree_map = {}
+	for(c in out_counts){
+		if (out_counts[c] in out_degrees){
+			out_degrees[out_counts[c]] += 1
+			degree_map[out_counts[c]].push(c)
+		} else {
+			out_degrees[out_counts[c]] = 1
+			degree_map[out_counts[c]] = [c]
+		}
+	}
+
+	var pie_data = [{name:0,value:0}]
+	for (d in out_degrees){
+		pie_data.push({name:d, value:out_degrees[d]})
+	}
+
+	var pie_width = 200
+	var pie_height = 200
+
+	pie_color = d3.scaleOrdinal()
+		.domain(pie_data.map(d => d.name))
+		.range(d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), pie_data.length).reverse())
+	
+	arc = d3.arc()
+		.innerRadius(0)
+		.outerRadius(Math.min(pie_width, pie_height) / 2 - 1)
+		
+	function arcLabel() {
+	  const pie_radius = Math.min(pie_width, pie_height) / 2 * 0.8;
+	  return d3.arc().innerRadius(pie_radius).outerRadius(pie_radius);
+	}
+
+	pie = d3.pie()
+		.sort(null)
+		.value(d => d.value)
+		
+  const arcs = pie(pie_data)
+
+  const svg = d3.select("svg")
+    
+  const g = svg.append("g")
+      .attr("transform", `translate(${width/2},${height*5/6})`)
+      
+  g.append("text")
+   .text("Degree Distribution")
+   .attr("x", "0.0em")
+   .attr("y", "-6.0em")
+   .style("font-weight", "bold")
+   .style("font-size", "20px")
+   .style("text-anchor", "middle");
+  
+  g.selectAll("path")
+    .data(arcs)
+    .enter().append("path")
+      .attr("fill", d => pie_color(d.data.name))
+      .attr("stroke", "white")
+      .attr("d", arc)
+     .on("mouseover", function (d) {
+		d3.select(this).transition()
+          .duration(500)
+          .attr("d", d3.arc()
+			.innerRadius(0)
+			.outerRadius(Math.min(pie_width, pie_height) / 2 - 1 + 20));
+		var newColor = d3.select(this).attr('fill')
+		nodes = new Set(degree_map[parseInt(d.data.name)].map(Number))
+		circles.attr("fill", function(d2) { return colorByOutDegree(d2, nodes, newColor) })
+	})
+	.on("mouseout", function(d) {
+        d3.select(this).transition()
+          .duration(500)
+          .attr("d", d3.arc()
+			.innerRadius(0)
+			.outerRadius(Math.min(pie_width, pie_height) / 2 - 1));	
+		circles.attr("fill", function(d2) { return colorByOutDegree(d2, new Set(), d3.rgb("black")) })
+      })
+    .append("title")
+      .text(d => `${d.data.name}: ${d.data.value.toLocaleString()}`);
+
+  const text = g.selectAll("text")
+    .data(arcs)
+    .enter().append("text")
+      .attr("transform", d => `translate(${arcLabel().centroid(d)})`)
+      .attr("dy", "0.35em")
+  
+  text.append("tspan")
+      .attr("x", "-0.3em")
+      .attr("y", "0.0em")
+      .style("font-weight", "bold")
+      .text(d => d.data.name);
+  /*
+  text.filter(d => (d.endAngle - d.startAngle) > 0.25).append("tspan")
+      .attr("x", 0)
+      .attr("y", "0.7em")
+      .attr("fill-opacity", 0.7)
+      .text(d => d.data.value.toLocaleString());
+	*/
+  return svg.node();
 }
 
 document.getElementById("refreshButton").onclick = function() {
