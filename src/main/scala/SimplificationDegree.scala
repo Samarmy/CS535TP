@@ -5,6 +5,7 @@ import org.apache.spark.graphx._
 import org.apache.spark.streaming._
 import org.apache.spark.streaming.dstream._
 import org.apache.spark.rdd.RDD
+import  org.apache.spark.graphx.VertexRDD
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -16,7 +17,8 @@ import java.net.InetSocketAddress
 import scala.io.Source
 
 object SimplificationDegree {
-    val numLevels = 4
+    var numLevels = 10
+    var numNodes = 100
 
     case class JsNode(id: Double, realID: Long)
     case class JsLink(source: Int, target: Int)
@@ -41,47 +43,37 @@ object SimplificationDegree {
         return retArray
     }
 
+    def max(a: (VertexId, Int), b: (VertexId, Int)): (VertexId, Int) = {
+        if (a._2 > b._2) a else b
+    }
+
     def main(args: Array[String]) {
         val spark = SparkSession.builder.appName("SimplificationDegree").getOrCreate()
         import spark.implicits._
         val sc = spark.sparkContext
 
-        val vertices: RDD[(VertexId, (Int, Int, Array[Long]))] =
-          sc.parallelize(Array((1L, (0, 0, Array.fill[Long](numLevels)(1L))),
-                               (2L, (0, 0, Array.fill[Long](numLevels)(2L))),
-                               (3L, (0, 0, Array.fill[Long](numLevels)(3L))),
-                               (4L, (0, 0, Array.fill[Long](numLevels)(4L))),
-                               (5L, (0, 0, Array.fill[Long](numLevels)(5L))),
-                               (6L, (0, 0, Array.fill[Long](numLevels)(6L))),
-                               (7L, (0, 0, Array.fill[Long](numLevels)(7L))),
-                               (8L, (0, 0, Array.fill[Long](numLevels)(8L)))))
-
-        val edges: RDD[Edge[Int]] =
-          sc.parallelize(Array(Edge(1L, 2L, 1), Edge(1L, 3L, 1), Edge(1L, 4L, 1), Edge(1L, 5L, 1),
-                               Edge(2L, 1L, 1), Edge(2L, 3L, 1), Edge(2L, 4L, 1), Edge(2L, 5L, 1),
-                               Edge(3L, 1L, 1), Edge(3L, 2L, 1), Edge(3L, 4L, 1), Edge(3L, 6L, 1),
-                               Edge(4L, 1L, 1), Edge(4L, 2L, 1), Edge(4L, 3L, 1), Edge(4L, 6L, 1),
-                               Edge(5L, 1L, 1), Edge(5L, 2L, 1),
-                               Edge(6L, 3L, 1), Edge(6L, 4L, 1), Edge(6L, 7L, 1),
-                               Edge(7L, 6L, 1), Edge(7L, 8L, 1),
-                               Edge(8L, 7L, 1)
-                             ))
-
+        val originalGraph = graphx.util.GraphGenerators.logNormalGraph(sc, numNodes, 0, 1.0, 1.0)
+        numLevels = originalGraph.degrees.reduce(max)._2
+        val directedGraph = originalGraph.mapVertices((id, _) => (0, 0, Array.fill[Long](numLevels)(id)))
         val defaultVertex = (0, 0, Array.fill[Long](numLevels)(-1L))
+        val graph = Graph(directedGraph.vertices, directedGraph.reverse.edges ++ directedGraph.edges ,defaultVertex)
 
-        // Build the initial Graph
-        val graph = Graph(vertices, edges, defaultVertex)
-        var newGraph = graph.outerJoinVertices(graph.outDegrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3)).cache()
-        var clusteredGraph = newGraph.vertices.cache()
+        var degreeGraph = graph.outerJoinVertices(graph.outDegrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3)).cache()
+        var degreeGraphVertices = degreeGraph.vertices.cache()
+        val degreeZeroVertices = degreeGraphVertices.filter{
+          case (id, x) =>  x._1 == 0
+        }
 
         for (x <- (numLevels - 1) to 1 by -1) {
-          clusteredGraph = newGraph.aggregateMessages[(Int, Int, Array[Long])](
+          degreeGraphVertices = degreeGraph.aggregateMessages[(Int, Int, Array[Long])](
             triplet => {  // Send Message
-              if(triplet.dstAttr._1 <= x && triplet.dstAttr._1 < triplet.srcAttr._1){
-                triplet.sendToDst(triplet.srcAttr)
-                triplet.sendToDst(triplet.dstAttr)
-              }else if (triplet.dstAttr._1 > x){
-                triplet.sendToDst(triplet.dstAttr)
+              if(triplet != null && triplet.dstAttr != null && triplet.srcAttr != null){
+                if(triplet.dstAttr._1 <= x && triplet.dstAttr._1 < triplet.srcAttr._1){
+                  triplet.sendToDst(triplet.srcAttr)
+                  triplet.sendToDst(triplet.dstAttr)
+                }else{
+                  triplet.sendToDst(triplet.dstAttr)
+                }
               }
             },
             (a,b) => {
@@ -93,21 +85,17 @@ object SimplificationDegree {
             }
           ).cache()
           if(x > 1){
-            newGraph = Graph(clusteredGraph, graph.edges).cache()
+            degreeGraph = Graph(degreeGraphVertices, graph.edges).cache()
           }
         }
 
-        clusteredGraph.mapValues(x => "(" + x._1 + "," + x._2 + ",(" + x._3.mkString(",") + "))").saveAsTextFile("/test")
-        val finalClusteredGraph = clusteredGraph.mapValues(x => x._3)
-        val finalGraph = Graph(finalClusteredGraph, graph.edges).cache()
+        val finalGraph = Graph(degreeGraphVertices.mapValues(x => x._3) ++ degreeZeroVertices.mapValues(x => x._3), graph.edges).cache()
 
         var gh = GraphHolder(finalGraph)
         val server = HttpServer.create(new InetSocketAddress(11777), 0)
         server.createContext("/", new ResponseHandler(gh))
         server.setExecutor(null)
         server.start()
-
-        //spark.stop()
     }
 
     class ResponseHandler(gh: GraphHolder) extends HttpHandler {
