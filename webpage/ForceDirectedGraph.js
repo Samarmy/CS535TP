@@ -62,7 +62,21 @@ function updateSim(error, g, info) {
       .nodes(graph.nodes)
       .on("tick", ticked);
 
-  chart(g, circles)
+  document.getElementById("graph").addEventListener('highlight_degree', function (e) {
+	  addInteriorNodeChart(info, circles, e.detail)
+	  addInteriorEdgeChart(info, circles, e.detail)
+  });
+  document.getElementById("graph").addEventListener('highlight_interior_node', function (e) {
+	   addDegreeChart(g, circles, e.detail)
+	   addInteriorEdgeChart(info, circles, e.detail)
+  });
+  document.getElementById("graph").addEventListener('highlight_interior_edge', function (e) {
+	   addDegreeChart(g, circles, e.detail)
+	   addInteriorNodeChart(info, circles, e.detail)
+  });
+  addDegreeChart(g, circles, new Set())
+  addInteriorNodeChart(info, circles, new Set())
+  addInteriorEdgeChart(info, circles, new Set())
 
   simulation.force("link")
       .links(graph.links);
@@ -134,9 +148,21 @@ function colorNode(d, h, g) {
 	} else { return }
 }
 
-function colorByOutDegree(d, nodes, color){
+function colorByOutDegree(d, nodes, oldNodes, color, t){
 	if (nodes.has(d.id)){
 		return d3.rgb(color)
+	} else if (oldNodes.has(d.id)) {
+		return d3.rgb(d3.select(t).attr('fill'))
+	} else {
+		return d3.rgb("black")
+	}
+}
+
+function colorByInteriorNodes(d, nodes, oldNodes, color, t){
+	if (nodes.has(d.id)){
+		return d3.rgb(color)
+	} else if (oldNodes.has(d.id)) {
+		return d3.rgb(d3.select(t).attr('fill'))
 	} else {
 		return d3.rgb("black")
 	}
@@ -261,18 +287,30 @@ function updateGraph() {
       .text(function(d) { return makeTooltip(d,h,graph) })
 }
 
-function chart(data, circles) {
+function addDegreeChart(data, circles, filter) {
 	var out_counts = {}
 	for(l in data.links){
-		if (data.links[l].source in out_counts){
-			out_counts[data.links[l].source] += 1
+		var src = null
+		var trgt = null
+		if (typeof data.links[l].source === "object"){
+			src = data.links[l].source.id
+			trgt = data.links[l].target.id
 		} else {
-			out_counts[data.links[l].source] = 1
+			src = data.links[l].source
+			trgt = data.links[l].target
 		}
-		if (data.links[l].target in out_counts){
-			out_counts[data.links[l].target] += 1
+		if(filter.size != 0 && !filter.has(parseInt(src)) && !filter.has(parseInt(trgt))){
+			continue
+		}
+		if (src in out_counts){
+			out_counts[src] += 1
 		} else {
-			out_counts[data.links[l].target] = 1
+			out_counts[src] = 1
+		}
+		if (trgt in out_counts){
+			out_counts[trgt] += 1
+		} else {
+			out_counts[trgt] = 1
 		}
 	}
 	var out_degrees = {}
@@ -286,93 +324,57 @@ function chart(data, circles) {
 			degree_map[out_counts[c]] = [c]
 		}
 	}
-
 	var pie_data = [{name:0,value:0}]
 	for (d in out_degrees){
 		pie_data.push({name:d, value:out_degrees[d]})
 	}
+	chart(pie_data, degree_map, circles, "degree")
+}
 
-	var pie_width = 200
-	var pie_height = 200
-
-	pie_color = d3.scaleOrdinal()
-		.domain(pie_data.map(d => d.name))
-		.range(d3.quantize(t => d3.interpolateSpectral(t * 0.8 + 0.1), pie_data.length).reverse())
-	
-	arc = d3.arc()
-		.innerRadius(0)
-		.outerRadius(Math.min(pie_width, pie_height) / 2 - 1)
-		
-	function arcLabel() {
-	  const pie_radius = Math.min(pie_width, pie_height) / 2 * 0.8;
-	  return d3.arc().innerRadius(pie_radius).outerRadius(pie_radius);
+function addInteriorNodeChart(data, circles, filter){
+	var pie_data = [{name:0,value:0}]
+	var pie_counts = {}
+	var intNodeMap = {}
+	for (var key in data) {
+		if (data.hasOwnProperty(key) && (filter.size == 0 || filter.has(parseInt(key)))) {        
+			if (data[key].numNodes in intNodeMap){
+				intNodeMap[data[key].numNodes].push(key)
+				pie_counts[data[key].numNodes] += 1
+			} else {
+				intNodeMap[data[key].numNodes] = [key]
+				pie_counts[data[key].numNodes] = 1
+			}
+		}
 	}
+	for (var key in pie_counts) {
+		if (pie_counts.hasOwnProperty(key)) {
+			pie_data.push({name:key, value:pie_counts[key]})
+		}
+	}
+	chart(pie_data, intNodeMap, circles, "interior_node")
+}
 
-	pie = d3.pie()
-		.sort(null)
-		.value(d => d.value)
-		
-  const arcs = pie(pie_data)
-
-  const svg = d3.select("svg")
-    
-  const g = svg.append("g")
-      .attr("transform", `translate(${width/2},${height*5/6})`)
-      
-  g.append("text")
-   .text("Degree Distribution")
-   .attr("x", "0.0em")
-   .attr("y", "-6.0em")
-   .style("font-weight", "bold")
-   .style("font-size", "20px")
-   .style("text-anchor", "middle");
-  
-  g.selectAll("path")
-    .data(arcs)
-    .enter().append("path")
-      .attr("fill", d => pie_color(d.data.name))
-      .attr("stroke", "white")
-      .attr("d", arc)
-     .on("mouseover", function (d) {
-		d3.select(this).transition()
-          .duration(500)
-          .attr("d", d3.arc()
-			.innerRadius(0)
-			.outerRadius(Math.min(pie_width, pie_height) / 2 - 1 + 20));
-		var newColor = d3.select(this).attr('fill')
-		nodes = new Set(degree_map[parseInt(d.data.name)].map(Number))
-		circles.attr("fill", function(d2) { return colorByOutDegree(d2, nodes, newColor) })
-	})
-	.on("mouseout", function(d) {
-        d3.select(this).transition()
-          .duration(500)
-          .attr("d", d3.arc()
-			.innerRadius(0)
-			.outerRadius(Math.min(pie_width, pie_height) / 2 - 1));	
-		circles.attr("fill", function(d2) { return colorByOutDegree(d2, new Set(), d3.rgb("black")) })
-      })
-    .append("title")
-      .text(d => `${d.data.name}: ${d.data.value.toLocaleString()}`);
-
-  const text = g.selectAll("text")
-    .data(arcs)
-    .enter().append("text")
-      .attr("transform", d => `translate(${arcLabel().centroid(d)})`)
-      .attr("dy", "0.35em")
-  
-  text.append("tspan")
-      .attr("x", "-0.3em")
-      .attr("y", "0.0em")
-      .style("font-weight", "bold")
-      .text(d => d.data.name);
-  /*
-  text.filter(d => (d.endAngle - d.startAngle) > 0.25).append("tspan")
-      .attr("x", 0)
-      .attr("y", "0.7em")
-      .attr("fill-opacity", 0.7)
-      .text(d => d.data.value.toLocaleString());
-	*/
-  return svg.node();
+function addInteriorEdgeChart(data, circles, filter){
+	var pie_data = [{name:0,value:0}]
+	var pie_counts = {}
+	var intEdgeMap = {}
+	for (var key in data) {
+		if (data.hasOwnProperty(key) && (filter.size == 0 || filter.has(parseInt(key)))) {        
+			if (data[key].numEdges in intEdgeMap){
+				intEdgeMap[data[key].numEdges].push(key)
+				pie_counts[data[key].numEdges] += 1
+			} else {
+				intEdgeMap[data[key].numEdges] = [key]
+				pie_counts[data[key].numEdges] = 1
+			}
+		}
+	}
+	for (var key in pie_counts) {
+		if (pie_counts.hasOwnProperty(key)) {
+			pie_data.push({name:key, value:pie_counts[key]})
+		}
+	}
+	chart(pie_data, intEdgeMap, circles, "interior_edge")
 }
 
 document.getElementById("refreshButton").onclick = function() {
