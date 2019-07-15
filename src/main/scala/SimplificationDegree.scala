@@ -54,10 +54,8 @@ object SimplificationDegree {
 
         val originalGraph = graphx.util.GraphGenerators.logNormalGraph(sc, numNodes, 0, 1.0, 1.0)
         numLevels = originalGraph.degrees.reduce(max)._2
-        val directedGraph = originalGraph.mapVertices((id, _) => (0, 0, Array.fill[Long](numLevels)(id)))
-        val defaultVertex = (0, 0, Array.fill[Long](numLevels)(-1L))
-        val graph = Graph(directedGraph.vertices, directedGraph.reverse.edges ++ directedGraph.edges ,defaultVertex)
-
+        val graph = originalGraph.mapVertices((id, _) => (0, 0, Array.fill[Long](numLevels)(id)))
+       
         var degreeGraph = graph.outerJoinVertices(graph.outDegrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3)).cache()
         var degreeGraphVertices = degreeGraph.vertices.cache()
         val degreeZeroVertices = degreeGraphVertices.filter{
@@ -72,6 +70,7 @@ object SimplificationDegree {
                   triplet.sendToDst(triplet.srcAttr)
                   triplet.sendToDst(triplet.dstAttr)
                 }else{
+                  triplet.sendToSrc(triplet.srcAttr)
                   triplet.sendToDst(triplet.dstAttr)
                 }
               }
