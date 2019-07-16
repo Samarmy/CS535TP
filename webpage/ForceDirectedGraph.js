@@ -11,7 +11,9 @@ var color = d3.scaleOrdinal(d3.schemeCategory10);
 var levelSize = 500
 var numLevels = 100
 var stack = []
-var radius = 6
+var radius = 8
+var pieSelections = {}
+var pieFilters = {degree:new Set(), interior_node:new Set(), interior_edge:new Set()}
 	
 fetchData()
 
@@ -22,7 +24,7 @@ function updateSim(error, g, info) {
   d3.select("svg").selectAll("*").remove()
   var simulation = d3.forceSimulation()
     .force("link", d3.forceLink().id(function(d) { return d.id; }))
-    .force("charge", d3.forceManyBody().strength(-150))
+    .force("charge", d3.forceManyBody().strength(-200))
     .force("x", d3.forceX(width / 2))
     .force("y", d3.forceY(height*4/6 / 2));
     
@@ -55,6 +57,13 @@ function updateSim(error, g, info) {
           .on("drag", dragged)
           .on("end", dragended));
 
+  var innerCircles = node.append("circle")
+			.attr("x", function (d2) { return d2.x+(radius/2) ; })
+			.attr("y", function (d2) { return d2.y+(radius/2) ; })
+			.attr("r", 4)
+			.style("stroke", function(d2) { return d3.rgb("rgba(0,0,0,0)") })
+			.attr("class", "inner_circle")
+
   node.append("title")
       //.text(function(d) { return makeTooltip(d,h,graph) })
       .text(function(d) { return makeTooltipReduced(d,h,graph,info) })
@@ -63,20 +72,26 @@ function updateSim(error, g, info) {
       .on("tick", ticked);
 
   document.getElementById("graph").addEventListener('highlight_degree', function (e) {
-	  addInteriorNodeChart(info, circles, e.detail)
-	  addInteriorEdgeChart(info, circles, e.detail)
+	  pieSelections["degree"] = e.detail.selected
+	  pieFilters["degree"] = e.detail.filter
+	  addInteriorNodeChart(info, circles, innerCircles, new Set([...pieFilters["degree"], ...pieFilters["interior_edge"]]), pieSelections["interior_node"])
+	  addInteriorEdgeChart(info, circles, innerCircles, new Set([...pieFilters["degree"], ...pieFilters["interior_node"]]), pieSelections["interior_edge"])
   });
   document.getElementById("graph").addEventListener('highlight_interior_node', function (e) {
-	   addDegreeChart(g, circles, e.detail)
-	   addInteriorEdgeChart(info, circles, e.detail)
+	   pieSelections["interior_node"] = e.detail.selected
+	   pieFilters["interior_node"] = e.detail.filter
+	   addDegreeChart(g, circles, innerCircles, new Set([...pieFilters["interior_node"], ...pieFilters["interior_edge"]]), pieSelections["degree"])
+	   addInteriorEdgeChart(info, circles, innerCircles, new Set([...pieFilters["degree"], ...pieFilters["interior_node"]]), pieSelections["interior_edge"])
   });
   document.getElementById("graph").addEventListener('highlight_interior_edge', function (e) {
-	   addDegreeChart(g, circles, e.detail)
-	   addInteriorNodeChart(info, circles, e.detail)
+	   pieSelections["interior_edge"] = e.detail.selected
+	   pieFilters["interior_edge"] = e.detail.filter
+	   addDegreeChart(g, circles, innerCircles, new Set([...pieFilters["interior_node"], ...pieFilters["interior_edge"]]), pieSelections["degree"])
+	   addInteriorNodeChart(info, circles, innerCircles, new Set([...pieFilters["degree"], ...pieFilters["interior_edge"]]), pieSelections["interior_node"])
   });
-  addDegreeChart(g, circles, new Set())
-  addInteriorNodeChart(info, circles, new Set())
-  addInteriorEdgeChart(info, circles, new Set())
+  addDegreeChart(g, circles, innerCircles, new Set(), [])
+  addInteriorNodeChart(info, circles, innerCircles, new Set(), [])
+  addInteriorEdgeChart(info, circles, innerCircles, new Set(), [])
 
   simulation.force("link")
       .links(graph.links);
@@ -162,9 +177,20 @@ function colorByInteriorNodes(d, nodes, oldNodes, color, t){
 	if (nodes.has(d.id)){
 		return d3.rgb(color)
 	} else if (oldNodes.has(d.id)) {
-		return d3.rgb(d3.select(t).attr('fill'))
+		return d3.rgb(d3.select(t).style('stroke'))
 	} else {
 		return d3.rgb("black")
+	}
+}
+
+function colorByInteriorEdges(d, nodes, oldNodes, color, t){
+	if (nodes.has(d.id)){
+		return d3.rgb(color)
+	} else if (oldNodes.has(d.id)) {
+		return d3.rgb(d3.select(t).style('fill'))
+		//return d3.rgb("rgba(0,0,0,0)")
+	} else {
+		return d3.rgb("rgba(0,0,0,0)")
 	}
 }
 
@@ -287,7 +313,7 @@ function updateGraph() {
       .text(function(d) { return makeTooltip(d,h,graph) })
 }
 
-function addDegreeChart(data, circles, filter) {
+function addDegreeChart(data, circles, innerCircles, filter, selected) {
 	var out_counts = {}
 	for(l in data.links){
 		var src = null
@@ -304,12 +330,12 @@ function addDegreeChart(data, circles, filter) {
 		}
 		if (src in out_counts){
 			out_counts[src] += 1
-		} else {
+		} else if (filter.has(parseInt(src)) || filter.size == 0) {
 			out_counts[src] = 1
 		}
 		if (trgt in out_counts){
 			out_counts[trgt] += 1
-		} else {
+		} else if (filter.has(parseInt(trgt)) || filter.size == 0) {
 			out_counts[trgt] = 1
 		}
 	}
@@ -328,10 +354,10 @@ function addDegreeChart(data, circles, filter) {
 	for (d in out_degrees){
 		pie_data.push({name:d, value:out_degrees[d]})
 	}
-	chart(pie_data, degree_map, circles, "degree")
+	chart(pie_data, degree_map, circles, innerCircles, selected, "degree")
 }
 
-function addInteriorNodeChart(data, circles, filter){
+function addInteriorNodeChart(data, circles, innerCircles, filter, selected){
 	var pie_data = [{name:0,value:0}]
 	var pie_counts = {}
 	var intNodeMap = {}
@@ -351,10 +377,10 @@ function addInteriorNodeChart(data, circles, filter){
 			pie_data.push({name:key, value:pie_counts[key]})
 		}
 	}
-	chart(pie_data, intNodeMap, circles, "interior_node")
+	chart(pie_data, intNodeMap, circles, innerCircles, selected, "interior_node")
 }
 
-function addInteriorEdgeChart(data, circles, filter){
+function addInteriorEdgeChart(data, circles, innerCircles, filter, selected){
 	var pie_data = [{name:0,value:0}]
 	var pie_counts = {}
 	var intEdgeMap = {}
@@ -374,7 +400,7 @@ function addInteriorEdgeChart(data, circles, filter){
 			pie_data.push({name:key, value:pie_counts[key]})
 		}
 	}
-	chart(pie_data, intEdgeMap, circles, "interior_edge")
+	chart(pie_data, intEdgeMap, circles, innerCircles, selected, "interior_edge")
 }
 
 document.getElementById("refreshButton").onclick = function() {

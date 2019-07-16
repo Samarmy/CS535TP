@@ -1,8 +1,10 @@
-function chart(pie_data, data_map, circles, type) {
+function chart(pie_data, data_map, circles, innerCircles, selected, type) {
 	d3.select("g."+type).remove();
 	var pie_width = 200
 	var pie_height = 200
 	var selectedVals = []
+	if (selected !== undefined)
+		selectedVals = selected
 	var filter = []
 
 	pie_color = d3.scaleOrdinal()
@@ -64,38 +66,41 @@ function chart(pie_data, data_map, circles, type) {
     .data(arcs)
     .enter().append("path")
 	  .attr("d", arc)
+	  .attr("id", function(d) { return type+d.data.name })
       .attr("fill", d => pie_color(d.data.name))
       .attr("stroke", "white")
      .on("mouseover", function (d) {
 		if(!d3.select(this).attr("clicked")){
-			select(d, pie_width, pie_height, circles, data_map, selectedVals, type, this)
+			select(d, pie_width, pie_height, circles, innerCircles, data_map, selectedVals, type, this)
+			selectedVals.push(parseInt(d.data.name))
 			filter = filter.concat(data_map[parseInt(d.data.name)])
-			var event = new CustomEvent('highlight_'+type, {detail: new Set(filter.map(Number))});
+			var event = new CustomEvent('highlight_'+type, {detail: {filter:new Set(filter.map(Number)), selected:selectedVals}});
 			document.getElementById("graph").dispatchEvent(event);
 		}
 	})
 	.on("mouseout", function(d) {
 		if (!d3.select(this).attr("clicked")){
-			deselect(d, pie_width, pie_height, circles, data_map, selectedVals, type, this)
+			selectedVals = deselect(d, pie_width, pie_height, circles, innerCircles, data_map, selectedVals, type, this)
 			var removalNodes = new Set(data_map[parseInt(d.data.name)])
 			filter = filter.filter(e => !removalNodes.has(e))
-			var event = new CustomEvent('highlight_'+type, {detail: new Set(filter.map(Number))});
+			var event = new CustomEvent('highlight_'+type, {detail: {filter:new Set(filter.map(Number)), selected:selectedVals}});
 			document.getElementById("graph").dispatchEvent(event);
 		}
       })
     .on("click", function(d) {
 		if(!d3.select(this).attr("clicked")){
 			d3.select(this).attr("clicked", true)
-			select(d, pie_width, pie_height, circles, data_map, selectedVals, type, this)
+			select(d, pie_width, pie_height, circles, innerCircles, data_map, selectedVals, type, this)
+			selectedVals.push(parseInt(d.data.name))
 			filter = filter.concat(data_map[parseInt(d.data.name)])
-			var event = new CustomEvent('highlight_'+type, {detail: new Set(filter.map(Number))});
+			var event = new CustomEvent('highlight_'+type, {detail: {filter:new Set(filter.map(Number)), selected:selectedVals}});
 			document.getElementById("graph").dispatchEvent(event);
 		} else {
 			d3.select(this).attr("clicked", null)
-			deselect(d, pie_width, pie_height, circles, data_map, selectedVals, type, this)
+			selectedVals = deselect(d, pie_width, pie_height, circles, innerCircles, data_map, selectedVals, type, this)
 			var removalNodes = new Set(data_map[parseInt(d.data.name)])
 			filter = filter.filter(e => removalNodes.has(e))
-			var event = new CustomEvent('highlight_'+type, {detail: new Set(filter.map(Number))});
+			var event = new CustomEvent('highlight_'+type, {detail: {filter:new Set(filter.map(Number)), selected:selectedVals}});
 			document.getElementById("graph").dispatchEvent(event);
 		}
 	})
@@ -120,10 +125,18 @@ function chart(pie_data, data_map, circles, type) {
       .attr("fill-opacity", 0.7)
       .text(d => d.data.value.toLocaleString());
 	*/
+	
+  for (val in selected){
+	d3.select("#"+type+selectedVals[val]).each( function(d) {
+		select(d, pie_width, pie_height, circles, innerCircles, data_map, selectedVals, type, this)
+		d3.select(this).attr("clicked", true)
+	})
+  }
+	
   return svg.node();
 }
 
-function select(d, pie_width, pie_height, circles, data_map, selectedVals, type, t){
+function select(d, pie_width, pie_height, circles, innerCircles, data_map, selectedVals, type, t){
 	d3.select(t).transition()
 		.duration(500)
         .attr("d", d3.arc()
@@ -138,20 +151,24 @@ function select(d, pie_width, pie_height, circles, data_map, selectedVals, type,
 	if (type === "degree")
 		circles.attr("fill", function(d2) { return colorByOutDegree(d2, nodes, oldNodes, newColor, this) })
 	else if (type === "interior_node")
-		circles.attr("fill", function(d2) { return colorByInteriorNodes(d2, nodes, oldNodes, newColor, this) })
-	selectedVals.push(parseInt(d.data.name))
+		circles.style("stroke", function(d2) { return colorByInteriorNodes(d2, nodes, oldNodes, newColor, this) })
+	else if (type === "interior_edge")
+		innerCircles.style("fill", function(d2) { return colorByInteriorEdges(d2, nodes, oldNodes, newColor, this) })
 }
 
-function deselect(d, pie_width, pie_height, circles, data_map, selectedVals, type, t, interiorInfo){
+function deselect(d, pie_width, pie_height, circles, innerCircles, data_map, selectedVals, type, t, interiorInfo){
 	d3.select(t).transition()
 		.duration(500)
         .attr("d", d3.arc()
 			.innerRadius(0)
 			.outerRadius(Math.min(pie_width, pie_height) / 2 - 1));	
-	selectedVals.filter(e => e !== parseInt(d.data.name))
+	selectedVals = selectedVals.filter(e => e != parseInt(d.data.name))
 	nodes = new Set(data_map[parseInt(d.data.name)].map(Number))
 	if (type === "degree")
 		circles.attr("fill", function(d2) { return colorByOutDegree(d2, nodes, oldNodes, d3.rgb("black"), this) })
 	else if (type === "interior_node")
-		circles.attr("fill", function(d2) { return colorByInteriorNodes(d2, nodes, oldNodes, d3.rgb("black"), this) })
+		circles.style("stroke", function(d2) { return colorByInteriorNodes(d2, nodes, oldNodes, d3.rgb("black"), this) })
+	else if (type === "interior_edge")
+		innerCircles.style("fill", function(d2) { return colorByInteriorEdges(d2, nodes, oldNodes, d3.rgb("rgba(0,0,0,0)"), this) })
+	return selectedVals
 }
