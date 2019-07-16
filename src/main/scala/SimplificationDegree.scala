@@ -58,7 +58,7 @@ object SimplificationDegree {
        
         var degreeGraph = graph.outerJoinVertices(graph.outDegrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3)).cache()
         var degreeGraphVertices = degreeGraph.vertices.cache()
-        val degreeZeroVertices = degreeGraphVertices.filter{
+        val degreeZeroVertices = graph.outerJoinVertices(graph.degrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3)).vertices.filter{
           case (id, x) =>  x._1 == 0
         }
 
@@ -66,12 +66,10 @@ object SimplificationDegree {
           degreeGraphVertices = degreeGraph.aggregateMessages[(Int, Int, Array[Long])](
             triplet => {  // Send Message
               if(triplet != null && triplet.dstAttr != null && triplet.srcAttr != null){
+                triplet.sendToSrc(triplet.srcAttr)
+                triplet.sendToDst(triplet.dstAttr)
                 if(triplet.dstAttr._1 <= x && triplet.dstAttr._1 < triplet.srcAttr._1){
                   triplet.sendToDst(triplet.srcAttr)
-                  triplet.sendToDst(triplet.dstAttr)
-                }else{
-                  triplet.sendToSrc(triplet.srcAttr)
-                  triplet.sendToDst(triplet.dstAttr)
                 }
               }
             },
