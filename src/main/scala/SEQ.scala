@@ -107,12 +107,12 @@ object SEQ {
           (Array.empty[(Long, (Set[Long], Set[Long]), Array[Long])], (Set.empty[Long], Set.empty[Long]), Array.fill[Long](numLevels)(id))
         }).cache()
 
-        val degreeZeroVertices = initializedGraph.outerJoinVertices(initializedGraph.degrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3)).vertices.filter{
-          case (id, x) =>  x._1 == 0
-        }.cache()
-
         var setGraph = initializedGraph.joinVertices(initializedGraph.collectNeighborIds(EdgeDirection.Out))((id, oldAttr, outNeighbors) => (oldAttr._1, (outNeighbors.toSet, oldAttr._2._2), oldAttr._3)).joinVertices(initializedGraph.collectNeighborIds(EdgeDirection.In))((id, oldAttr, inNeighbors) => (oldAttr._1, (oldAttr._2._1, inNeighbors.toSet), oldAttr._3)).cache()
 
+        var degreeZeroVertices = setGraph.vertices.filter{
+          case (id, x) =>  x._2._1.isEmpty && x._2._2.isEmpty
+        }.cache()
+        
         var setGraphVertices = setGraph.aggregateMessages[(Array[(Long, (Set[Long], Set[Long]), Array[Long])], (Set[Long], Set[Long]), Array[Long])](
           triplet => {  // Send Message
             if(triplet != null && triplet.dstAttr != null && triplet.srcAttr != null){
