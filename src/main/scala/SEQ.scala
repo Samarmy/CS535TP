@@ -54,6 +54,18 @@ object SEQ {
         }
         return ary
     }
+    
+    def distinctUnion(a: Array[(Long, (Set[Long], Set[Long]), Array[Long])], b: Array[(Long, (Set[Long], Set[Long]), Array[Long])]) : Array[(Long, (Set[Long], Set[Long]), Array[Long])] = {
+      var trackIdx = Array.empty[Long]
+      var ary = Array.empty[(Long, (Set[Long], Set[Long]), Array[Long])]
+      for(x <- (a ++ b)){
+        if(!trackIdx.contains(x._1)){
+          trackIdx = trackIdx :+ x._1
+          ary = ary :+ x
+        }
+      }
+      return ary
+    }
 
     def main(args: Array[String]) {
         val spark = SparkSession.builder.appName("SEQ").getOrCreate()
@@ -123,7 +135,7 @@ object SEQ {
             }
           },
           (a,b) => {
-            (a._1 ++ b._1, (a._2._1 , a._2._2 ), a._3)
+            (distinctUnion(a._1, b._1), (a._2._1 , a._2._2 ), a._3)
           }
         ).mapValues(x => {
             if(x._1.size > 1){
