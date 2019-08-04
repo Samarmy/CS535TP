@@ -36,7 +36,7 @@ object SimplificationDegree {
 
     def merge(a: Array[Long], b: Array[Long]) : Array[Long] = {
         var n = getLevel(a)
-        var retArray = b.clone
+        var retArray = b
         if(n <= retArray.size){
           for ( x <- 0 to n - 1) retArray(x) = a(x)
         }
@@ -53,6 +53,7 @@ object SimplificationDegree {
         val sc = spark.sparkContext
 
         numLevels = args(0).toInt
+        // val originalGraph = graphx.util.GraphGenerators.logNormalGraph(sc, numNodes, 0, 1.0, 1.0)
 
         var edges = sc.textFile("/socialNet/*").map(x => {
           var ary = x.split("\\s+")
@@ -61,22 +62,57 @@ object SimplificationDegree {
         
         var graph = Graph.fromEdges(edges, 0L).mapVertices((id, _) => (0, 0, Array.fill[Long](numLevels)(id)))
 
-        var degreeGraph = graph.outerJoinVertices(graph.outDegrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3, numLevels - 1))
+        // val vertices: RDD[(VertexId, Long)] =
+        //   sc.parallelize(Array((1L, 0L),
+        //                        (2L, 0L),
+        //                        (3L, 0L),
+        //                        (4L, 0L),
+        //                        (5L, 0L),
+        //                        (6L, 0L),
+        //                        (7L, 0L),
+        //                        (8L, 0L)
+        //                      ))
+        //
+        // val edges: RDD[Edge[Int]] =
+        //   sc.parallelize(Array(Edge(1L, 2L, 1), Edge(1L, 3L, 1), Edge(1L, 4L, 1), Edge(1L, 5L, 1),
+        //                        Edge(2L, 1L, 1), Edge(2L, 3L, 1), Edge(2L, 4L, 1), Edge(2L, 5L, 1),
+        //                        Edge(3L, 1L, 1), Edge(3L, 2L, 1), Edge(3L, 4L, 1), Edge(3L, 6L, 1),
+        //                        Edge(4L, 1L, 1), Edge(4L, 2L, 1), Edge(4L, 3L, 1), Edge(4L, 6L, 1),
+        //                        Edge(5L, 1L, 1), Edge(5L, 2L, 1),
+        //                        Edge(6L, 3L, 1), Edge(6L, 4L, 1), Edge(6L, 7L, 1),
+        //                        Edge(7L, 6L, 1), Edge(7L, 8L, 1),
+        //                        Edge(8L, 7L, 1)
+        //                      ))
+        //
+        // val graph = Graph(vertices, edges, -1L).mapVertices((id, _) => (0, 0, Array.fill[Long](numLevels)(id))).cache()
+        //
 
-        val pregelGraph = degreeGraph.pregel((0, 0, Array.fill[Long](numLevels)(-1L), numLevels - 1), numLevels -1)(
-          (id, newAttr, attr) => {
-            if(attr._3(0) == -1L){
-              newAttr
-            }else if(newAttr._3(0) == -1L){
+
+        // numLevels = graph.degrees.reduce(max)._2
+        // val graph = originalGraph.mapVertices((id, _) => (0, 0, Array.fill[Long](numLevels)(id)))
+
+        var startTime = System.currentTimeMillis()
+
+        var degreeGraph = graph.outerJoinVertices(graph.outDegrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3))
+        // var degreeGraphVertices = degreeGraph.vertices.cache()
+        // val degreeZeroVertices = graph.outerJoinVertices(graph.degrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3)).vertices.filter{
+        //   case (id, x) =>  x._1 == 0
+        // }
+
+        val pregelGraph = degreeGraph.pregel((0, 0, Array.fill[Long](numLevels)(-1L)), numLevels -1)(
+          (id, attr, newAttr) => {
+            if(newAttr._3(0) == -1L){
               attr
-            }else if(attr._1 >= newAttr._2){
-              (newAttr._1, attr._1, merge(attr._3, newAttr._3), attr._4 - 1)
+            }else if(attr._3(0) == -1L){
+              newAttr
+            }else if(newAttr._1 >= attr._2){
+              (attr._1, newAttr._1, merge(newAttr._3, attr._3))
             }else{
-              (newAttr._1, newAttr._2, newAttr._3, newAttr._4 - 1)
+              attr
             }
           }, // Vertex Program
           triplet => {  // Send Message
-            if(triplet.dstAttr._1 <= triplet.dstAttr._4 && triplet.dstAttr._1 < triplet.srcAttr._1){
+            if(triplet.dstAttr._1 < triplet.srcAttr._1){
               Iterator((triplet.dstId, triplet.srcAttr))
             }else{
               Iterator.empty
@@ -84,15 +120,46 @@ object SimplificationDegree {
           },
           (a,b) => {
             if(a._1 > b._2){
-              (b._1, a._1, merge(a._3, b._3), a._4)
+              (b._1, a._1, merge(a._3, b._3))
             }else{
               b
             }
           }
         )
 
+        // pregelGraph.vertices.mapValues(x => "(" + x._1 + ", " + x._2 + ", (" + x._3.mkString(",") + "))").saveAsTextFile("/test")
+
+
+
+        // for (x <- (numLevels - 1) to 1 by -1) {
+        //   degreeGraphVertices = degreeGraph.aggregateMessages[(Int, Int, Array[Long])](
+        //     triplet => {  // Send Message
+        //       if(triplet != null && triplet.dstAttr != null && triplet.srcAttr != null){
+        //         triplet.sendToSrc(triplet.srcAttr)
+        //         triplet.sendToDst(triplet.dstAttr)
+        //         if(triplet.dstAttr._1 <= x && triplet.dstAttr._1 < triplet.srcAttr._1){
+        //           triplet.sendToDst(triplet.srcAttr)
+        //         }
+        //       }
+        //     },
+        //     (a,b) => {
+        //       if(a._1 >= b._2){
+        //         (b._1, a._1, merge(a._3, b._3))
+        //       }else{
+        //         b
+        //       }
+        //     }
+        //   )
+        //   // degreeGraphVertices.take(1)
+        //   if(x > 1){
+        //     degreeGraph = Graph(degreeGraphVertices, graph.edges)
+        //   }
+        // }
+
         val finalGraph = Graph(pregelGraph.vertices.mapValues(x => x._3), graph.edges).cache()
-        
+        var endTime = System.currentTimeMillis()
+        // sc.parallelize(Array((endTime-startTime))).saveAsTextFile("/socialNet/time")
+
         var gh = GraphHolder(finalGraph)
         val server = HttpServer.create(new InetSocketAddress(11777), 0)
         server.createContext("/", new ResponseHandler(gh))
