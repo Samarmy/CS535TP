@@ -93,22 +93,22 @@ object SimplificationDegree {
 
         var startTime = System.currentTimeMillis()
 
-        var degreeGraph = graph.outerJoinVertices(graph.outDegrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3))
+        var degreeGraph = graph.outerJoinVertices(graph.outDegrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3, numLevels - 1))
         // var degreeGraphVertices = degreeGraph.vertices.cache()
         // val degreeZeroVertices = graph.outerJoinVertices(graph.degrees)((id, oldAttr, outDegOpt) => (outDegOpt.getOrElse(0), outDegOpt.getOrElse(0), oldAttr._3)).vertices.filter{
         //   case (id, x) =>  x._1 == 0
         // }
 
-        val pregelGraph = degreeGraph.pregel((0, 0, Array.fill[Long](numLevels)(-1L)), numLevels -1)(
-          (id, attr, newAttr) => {
-            if(newAttr._3(0) == -1L){
-              attr
-            }else if(attr._3(0) == -1L){
+        val pregelGraph = degreeGraph.pregel((0, 0, Array.fill[Long](numLevels)(-1L), numLevels - 1), numLevels -1)(
+          (id, newAttr, attr) => {
+            if(attr._3(0) == -1L){
               newAttr
-            }else if(newAttr._1 >= attr._2){
-              (attr._1, newAttr._1, merge(newAttr._3, attr._3))
-            }else{
+            }else if(newAttr._3(0) == -1L){
               attr
+            }else if(attr._1 >= newAttr._2){
+              (newAttr._1, attr._1, merge(attr._3, newAttr._3), attr._4 - 1)
+            }else{
+              (newAttr._1, newAttr._2, newAttr._3, newAttr._4 - 1)
             }
           }, // Vertex Program
           triplet => {  // Send Message
@@ -120,7 +120,7 @@ object SimplificationDegree {
           },
           (a,b) => {
             if(a._1 > b._2){
-              (b._1, a._1, merge(a._3, b._3))
+              (b._1, a._1, merge(a._3, b._3), a._4)
             }else{
               b
             }
