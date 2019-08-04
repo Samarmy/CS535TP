@@ -103,8 +103,6 @@ object SimplificationDegree {
           (id, newAttr, attr) => {
             if(attr._3(0) == -1L){
               newAttr
-            }else if(newAttr._3(0) == -1L){
-              attr
             }else if(attr._1 >= newAttr._2){
               (newAttr._1, attr._1, merge(attr._3, newAttr._3), attr._4 - 1)
             }else{
