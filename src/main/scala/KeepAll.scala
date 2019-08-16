@@ -17,6 +17,10 @@ import java.net.InetSocketAddress
 import scala.io.Source
 import scala.collection.{mutable, Map}
 import scala.reflect.ClassTag
+import scala.concurrent.{Future, Await}
+import scala.concurrent.duration.Duration
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.util.{Try, Success, Failure}
 
 object ShortestPaths extends Serializable {
   /** Stores a map from the vertex id of a landmark to the distance to that landmark. */
@@ -77,18 +81,19 @@ object ShortestPaths extends Serializable {
       else Iterator.empty
     }
 
-    Pregel(spGraph, initialMessage)(vertexProgram, sendMessage, addMaps)
+    Pregel(spGraph, initialMessage, 100)(vertexProgram, sendMessage, addMaps)
   }
 }
 
 
-object KeepOne {
+object KeepAll {
     var numLevels = 5
     var numNodes = 100
 
     case class JsNode(id: Double, realID: Long)
     case class JsLink(source: Int, target: Int)
-    case class JsGraph(nodes: Array[JsNode], links: Array[JsLink])
+    case class JsAdjNode(id: Long)
+    case class JsGraph(nodes: Array[JsNode], links: Array[JsLink], adjacentSubgraphs: Array[JsAdjNode])
 
     def getLevel(a: Array[Long]): Int = {
       var level = 1
@@ -149,18 +154,18 @@ object KeepOne {
         val spark = SparkSession.builder.appName("KeepOne").getOrCreate()
         import spark.implicits._
         val sc = spark.sparkContext
-        //sc.setCheckpointDir("hdfs://salt-lake-city:30121/pregel_checkpoint")
+        sc.setCheckpointDir("hdfs://salt-lake-city:30121/pregel_checkpoint")
         
-        //var edges = sc.textFile("hdfs://austin:30121/socialNet2/*").map(x => {
+        var edges = sc.textFile("hdfs://austin:30121/socialNet/*").map(x => {
+            var ary = x.split("\\s+")
+            Edge(ary(0).toLong, ary(1).toLong, 1)
+        })
+        
+        
+        //val edges = sc.textFile("hdfs://austin:30121/roadNet/roadNet-CA.txt").filter(!_.contains("#")).map(x => {
           //var ary = x.split("\\s+")
             //Edge(ary(0).toLong, ary(1).toLong, 1)
         //})
-        
-        
-        val edges = sc.textFile("hdfs://austin:30121/roadNet/roadNet-CA.txt").filter(!_.contains("#")).map(x => {
-          var ary = x.split("\\s+")
-            Edge(ary(0).toLong, ary(1).toLong, 1)
-        })
         
         var graph = Graph.fromEdges(edges, 0L).mapVertices((id, _) => (0, 0, Array.fill[Long](numLevels)(id)))
         println("Initial graph constructed")
@@ -216,14 +221,14 @@ object KeepOne {
         println("Estimated average path length: "+ estimatedAvgPathLength)
         val importantDegree = degreeGraph.vertices.map{
             case (id, x) => x._1
-        }.top((100.0/estimatedAvgPathLength).toInt).reduceLeft(_ min _)
+        }.top(Math.max(2,(100.0/estimatedAvgPathLength).toInt)).reduceLeft(_ min _)
         
         //Pick important vertices. 
         val iV = degreeGraph.vertices.filter{
           case (id, x) =>  x._1 >= importantDegree
         }
 
-        val importantVertices = iV.sample(false, Math.min((100.0/estimatedAvgPathLength)/iV.count,1))
+        val importantVertices = iV.sample(false, Math.max(2/iV.count,Math.min((100.0/estimatedAvgPathLength)/iV.count,1)))
         println("Selected "+importantVertices.count+" important vertices")
 
         //println(savedIV.value)
@@ -337,28 +342,58 @@ object KeepOne {
         private def makeResponse(body: String): String ={
             var gson = new Gson()
             val request = body.split(",").filter(_!="").map(_.toInt)
+            val l = request.length
 
-            val vizVerts = gh.graph.vertices.flatMap{case (id, prop) =>
-                if (request.length == 0){
-                    Array[JsNode](JsNode(prop(0), id))
+            val adjacentSubgraphs = Future {
+                if (l == 0){
+                    Array[JsAdjNode]()
                 } else {
-                    if(prop.take(request.length).sameElements(request)){
-                        if (request.length == numLevels){
-                            Array[JsNode](JsNode(id, id))
-                        } else {
-                            Array[JsNode](JsNode(prop(request.length), id))
+                    gh.graph.triplets.flatMap{ t =>
+                        if(t.srcAttr.take(l).sameElements(request) && t.dstAttr.take(l-1).sameElements(request.dropRight(1))){
+                            Array[JsAdjNode](JsAdjNode(t.dstAttr(l-1)))
+                        } else if(t.dstAttr.take(l).sameElements(request) && t.srcAttr.take(l-1).sameElements(request.dropRight(1))){
+                            Array[JsAdjNode](JsAdjNode(t.srcAttr(l-1)))
+                        }else {
+                            Array[JsAdjNode]()
                         }
-                    } else {
-                        Array[JsNode]()
-                    }
+                    }.distinct().collect()
                 }
-            }.distinct().collect()
+            }
+            
+            val vizVerts = Future { gh.graph.vertices.flatMap{case (id, prop) =>
+                    if (request.length == 0){
+                        Array[JsNode](JsNode(prop(0), id))
+                    } else {
+                        if(prop.take(l).sameElements(request)){
+                            if (l == numLevels){
+                                Array[JsNode](JsNode(id, id))
+                            } else {
+                                Array[JsNode](JsNode(prop(l), id))
+                            }
+                        } else {
+                            Array[JsNode]()
+                        }
+                    }
+                }.distinct().collect()
+            }
 
-            val vizEdges = gh.graph.edges.map{
-                edge => JsLink(edge.srcId.toInt, edge.dstId.toInt)
-            }.collect()
+            val vizEdges = Future { gh.graph.edges.map{
+                    edge => JsLink(edge.srcId.toInt, edge.dstId.toInt)
+                }.collect()
+            }
+            
+            val aggFut = Await.ready(for{
+                f1Result <- vizVerts
+                f2Result <- vizEdges
+                f3Result <- adjacentSubgraphs
+            } yield (f1Result, f2Result, f3Result), Duration.Inf).value.get
 
-            return gson.toJson(JsGraph(vizVerts, vizEdges))
+            aggFut match {
+                case Success(v) =>
+                    return gson.toJson(JsGraph(v._1, v._2, v._3))
+                case Failure(e) =>
+                    return "Future failed"
+            }
         }
 
         private def sendResponse(t: HttpExchange, body: String) {
