@@ -80,7 +80,16 @@ object NaiveReducer {
     }
     
     def makeGraph(sc: SparkContext, subgraphSize: Double): Tuple2[Graph[Array[Long],Int], Long] = {
-        val graph: Graph[Long, Int] = graphx.util.GraphGenerators.logNormalGraph(sc, numNodes, 0, 0.4, 1.0)
+        var graph: Graph[Long, Int] = graphx.util.GraphGenerators.logNormalGraph(sc, numNodes, 0, 0.4, 1.0)
+        
+        if (subgraphSize != -1){
+            println(subgraphSize)
+            println(numNodes)
+            val portion = Math.min(Math.max(subgraphSize,0)/numNodes,1)
+            println(portion)
+            println("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            graph = graph.subgraph(vpred = (id, attr) => rand.nextFloat() < portion)
+        }
         
         val initialGraph = graph.mapVertices((id, _) => {
             var retArray = Array.fill[Long](numLevels)(-1)
