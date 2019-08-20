@@ -154,7 +154,7 @@ object KeepAll {
         val spark = SparkSession.builder.appName("KeepOne").getOrCreate()
         import spark.implicits._
         val sc = spark.sparkContext
-        sc.setCheckpointDir("hdfs://salt-lake-city:30121/pregel_checkpoint")
+        sc.setCheckpointDir("/pregel_checkpoint")
         
         var edges = sc.textFile("hdfs://austin:30121/socialNet/*").map(x => {
             var ary = x.split("\\s+")
@@ -168,6 +168,7 @@ object KeepAll {
         //})
         
         var graph = Graph.fromEdges(edges, 0L).mapVertices((id, _) => (0, 0, Array.fill[Long](numLevels)(id)))
+        
         println("Initial graph constructed")
         // val vertices: RDD[(VertexId, Long)] =
         //   sc.parallelize(Array((1L, 0L),
